@@ -1,0 +1,573 @@
+:root {
+  --bg: #06111d;
+  --panel: rgba(7, 24, 39, 0.84);
+  --panel-strong: rgba(5, 20, 34, 0.94);
+  --line: rgba(44, 205, 224, 0.24);
+  --cyan: #00d4e7;
+  --cyan-soft: #62efff;
+  --orange: #ff8a1e;
+  --gold: #f5b950;
+  --text: #f6fbff;
+  --muted: #bbcad5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: var(--text);
+  background: #171717;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.page-shell {
+  width: min(100%, 1180px);
+  margin: 18px auto;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 72% 8%, rgba(0, 212, 231, 0.13), transparent 30%),
+    linear-gradient(180deg, #06111d 0%, #071521 100%);
+  box-shadow: 0 26px 70px rgba(0, 0, 0, 0.36);
+}
+
+.hero {
+  position: relative;
+  min-height: 760px;
+  isolation: isolate;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background-image:
+    linear-gradient(90deg, rgba(2, 10, 20, 0.96) 0%, rgba(2, 10, 20, 0.86) 37%, rgba(2, 10, 20, 0.38) 72%, rgba(2, 10, 20, 0.62) 100%),
+    linear-gradient(180deg, transparent 0%, rgba(6, 17, 29, 0.2) 66%, #06111d 100%),
+    url("assets/travel-savings-hero.png");
+  background-size: cover;
+  background-position: center;
+}
+
+.hero-content,
+.section,
+.specialist,
+.final-cta {
+  width: min(100% - 44px, 1080px);
+  margin: 0 auto;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-top: 48px;
+}
+
+.brand-mark {
+  display: grid;
+  width: 56px;
+  height: 56px;
+  place-items: center;
+  border-radius: 14px;
+  font-size: 26px;
+  background: linear-gradient(145deg, #00e1f0, #026c8a);
+  box-shadow: 0 12px 34px rgba(0, 212, 231, 0.28);
+}
+
+.brand strong {
+  display: block;
+  font-size: 25px;
+  line-height: 1;
+}
+
+.brand span {
+  display: block;
+  margin-top: 6px;
+  color: #d8e3ea;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.hero-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.02fr) minmax(330px, 0.72fr);
+  align-items: center;
+  gap: 54px;
+  padding: 76px 0 86px;
+}
+
+.eyebrow {
+  margin: 0 0 16px;
+  color: var(--cyan-soft);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 13px;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  max-width: 640px;
+  margin-bottom: 22px;
+  font-size: clamp(40px, 6vw, 64px);
+  line-height: 1.08;
+  letter-spacing: 0;
+}
+
+h1 span,
+.steps-section h2 span {
+  color: var(--cyan);
+}
+
+.hero-copy > p:not(.eyebrow) {
+  max-width: 530px;
+  color: #d8e4ec;
+  font-size: 18px;
+  line-height: 1.65;
+}
+
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-height: 66px;
+  margin-top: 22px;
+  padding: 0 36px;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 800;
+  background: linear-gradient(180deg, #ffb01f 0%, #ff790e 100%);
+  box-shadow: 0 18px 35px rgba(255, 124, 14, 0.28);
+}
+
+.cta-icon {
+  font-size: 22px;
+}
+
+.trust-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 28px;
+  color: var(--muted);
+}
+
+.trust-note span {
+  font-size: 23px;
+}
+
+.trust-note small {
+  max-width: 320px;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.phone-wrap {
+  display: flex;
+  justify-content: center;
+  perspective: 1100px;
+}
+
+.phone {
+  width: min(100%, 340px);
+  padding: 16px;
+  border: 10px solid #111;
+  border-radius: 42px;
+  color: #152033;
+  background: #f8fbff;
+  box-shadow:
+    0 34px 70px rgba(0, 0, 0, 0.54),
+    inset 0 0 0 2px #30343a;
+  transform: rotate(3deg);
+}
+
+.phone-top,
+.app-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.app-head {
+  margin: 16px 0;
+  color: #264367;
+}
+
+.destination {
+  position: relative;
+  height: 150px;
+  overflow: hidden;
+  border-radius: 15px;
+}
+
+.destination img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: 72% center;
+  filter: saturate(1.1);
+}
+
+.destination::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(180deg, transparent 34%, rgba(0, 0, 0, 0.64));
+}
+
+.destination div {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  left: 14px;
+  z-index: 1;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  color: #fff;
+}
+
+.destination strong {
+  font-size: 14px;
+}
+
+.destination span {
+  padding: 5px 8px;
+  border-radius: 7px;
+  color: #0b2533;
+  background: #fff;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.metric {
+  display: grid;
+  gap: 5px;
+  margin-top: 12px;
+  padding: 15px;
+  border: 1px solid #dbe5ee;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 6px 18px rgba(22, 35, 55, 0.08);
+}
+
+.metric span {
+  color: #526172;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.metric strong {
+  color: #0eb67f;
+  font-size: 18px;
+}
+
+.metric.blue strong {
+  color: #216de3;
+}
+
+.metric.orange strong {
+  color: #ff6d21;
+}
+
+.phone button {
+  width: 100%;
+  min-height: 48px;
+  margin-top: 14px;
+  border: 0;
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(180deg, #04b8ca, #05788d);
+  font-weight: 900;
+}
+
+.section {
+  padding: 42px 0 20px;
+  text-align: center;
+}
+
+.section h2,
+.specialist h2,
+.final-cta h2 {
+  margin-bottom: 8px;
+  font-size: clamp(28px, 4vw, 36px);
+  line-height: 1.2;
+}
+
+.title-line {
+  width: 58px;
+  height: 4px;
+  margin: 0 auto 30px;
+  border-radius: 99px;
+  background: var(--cyan);
+  box-shadow: 0 0 20px rgba(0, 212, 231, 0.8);
+}
+
+.title-line.left {
+  margin-left: 0;
+}
+
+.audience-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+}
+
+.audience-grid article {
+  display: grid;
+  min-height: 210px;
+  align-content: center;
+  justify-items: center;
+  gap: 18px;
+  padding: 24px 18px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(0, 212, 231, 0.12), transparent 42%),
+    var(--panel);
+}
+
+.audience-grid span {
+  display: grid;
+  width: 82px;
+  height: 82px;
+  place-items: center;
+  border: 1px solid rgba(0, 212, 231, 0.7);
+  border-radius: 50%;
+  color: var(--cyan);
+  font-size: 40px;
+  box-shadow: 0 0 24px rgba(0, 212, 231, 0.14);
+}
+
+.audience-grid p {
+  max-width: 190px;
+  margin: 0;
+  color: #edf6fb;
+  font-size: 17px;
+  font-weight: 600;
+  line-height: 1.28;
+}
+
+.steps-section {
+  padding-top: 44px;
+}
+
+.section-subtitle {
+  margin-bottom: 26px;
+  color: #d4e0e8;
+  font-size: 20px;
+}
+
+.steps {
+  display: grid;
+  gap: 12px;
+  text-align: left;
+}
+
+.steps article {
+  display: grid;
+  grid-template-columns: 78px minmax(0, 1fr);
+  align-items: center;
+  min-height: 144px;
+  padding: 20px 26px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, rgba(5, 20, 34, 0.97) 0%, rgba(5, 20, 34, 0.86) 54%, rgba(6, 17, 29, 0.36) 100%),
+    url("assets/travel-savings-hero.png");
+  background-size: cover;
+  background-position: center;
+}
+
+.steps article:nth-child(2) {
+  background-position: 70% 70%;
+}
+
+.steps article:nth-child(3) {
+  background-position: 56% 92%;
+}
+
+.steps article:nth-child(4) {
+  background-position: 82% center;
+}
+
+.steps strong {
+  display: grid;
+  width: 54px;
+  height: 54px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--cyan);
+  background: rgba(0, 212, 231, 0.05);
+  font-size: 24px;
+}
+
+.steps h3 {
+  margin-bottom: 8px;
+  font-size: 24px;
+}
+
+.steps p {
+  max-width: 470px;
+  margin-bottom: 0;
+  color: #dce8ef;
+  font-size: 18px;
+  line-height: 1.38;
+}
+
+.specialist {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  align-items: center;
+  gap: 28px;
+  margin-top: 34px;
+  padding: 36px 54px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-strong);
+}
+
+.specialist p {
+  max-width: 600px;
+  color: #d7e4eb;
+  font-size: 17px;
+  line-height: 1.6;
+}
+
+.portrait {
+  display: grid;
+  justify-items: center;
+}
+
+.portrait-face {
+  width: 250px;
+  aspect-ratio: 1;
+  border: 2px solid rgba(245, 185, 80, 0.78);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 50% 34%, #f1c7a8 0 12%, transparent 13%),
+    radial-gradient(circle at 44% 31%, #1a1d22 0 2%, transparent 3%),
+    radial-gradient(circle at 57% 31%, #1a1d22 0 2%, transparent 3%),
+    radial-gradient(circle at 50% 52%, #1c2631 0 23%, transparent 24%),
+    linear-gradient(145deg, #243345, #080f18);
+  box-shadow: inset 0 -30px 60px rgba(0, 0, 0, 0.28), 0 20px 44px rgba(0, 0, 0, 0.35);
+}
+
+.final-cta {
+  margin-top: 34px;
+  padding: 54px 22px 64px;
+  text-align: center;
+}
+
+.final-cta p {
+  margin-bottom: 4px;
+  color: #d7e4eb;
+  font-size: 18px;
+}
+
+@media (max-width: 880px) {
+  .page-shell {
+    margin: 0;
+  }
+
+  .hero {
+    min-height: auto;
+  }
+
+  .hero-grid,
+  .specialist {
+    grid-template-columns: 1fr;
+  }
+
+  .hero-grid {
+    gap: 34px;
+    padding-top: 50px;
+  }
+
+  .phone {
+    transform: none;
+  }
+
+  .audience-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .specialist {
+    padding: 30px 24px;
+  }
+}
+
+@media (max-width: 560px) {
+  .hero-content,
+  .section,
+  .specialist,
+  .final-cta {
+    width: min(100% - 28px, 1080px);
+  }
+
+  .brand {
+    padding-top: 28px;
+  }
+
+  .brand strong {
+    font-size: 20px;
+  }
+
+  h1 {
+    font-size: 38px;
+  }
+
+  .cta {
+    width: 100%;
+    padding: 0 18px;
+    font-size: 18px;
+  }
+
+  .audience-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .audience-grid article {
+    min-height: 168px;
+  }
+
+  .steps article {
+    grid-template-columns: 1fr;
+    gap: 16px;
+    padding: 22px;
+  }
+
+  .steps h3 {
+    font-size: 21px;
+  }
+
+  .steps p,
+  .section-subtitle {
+    font-size: 16px;
+  }
+
+  .portrait-face {
+    width: 210px;
+  }
+}
