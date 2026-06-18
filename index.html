@@ -40,47 +40,13 @@
                 Escolha para onde quer ir e receba uma simulação clara de custos,
                 meta mensal e prazo para transformar vontade em passagem comprada.
               </p>
-              <a class="cta" href="https://wa.me/5500000000000" target="_blank" rel="noreferrer">
+              <button class="cta" type="button" data-open-vip-form>
                 <span class="cta-icon">👥</span>
                 Entrar no grupo VIP
-              </a>
+              </button>
               <div class="trust-note">
                 <span>🔒</span>
                 <small>Receba acesso antecipado, novidades e condições especiais.</small>
-              </div>
-            </div>
-
-            <div class="phone-wrap" aria-label="Prévia do plano da viagem">
-              <div class="phone">
-                <div class="phone-top">
-                  <span>9:41</span>
-                  <span>•••</span>
-                </div>
-                <div class="app-head">
-                  <span>‹</span>
-                  <strong>Plano da sua viagem</strong>
-                  <span>☰</span>
-                </div>
-                <div class="destination">
-                  <img src="assets/travel-savings-hero.png" alt="">
-                  <div>
-                    <strong>Santorini, Grécia</strong>
-                    <span>Europa</span>
-                  </div>
-                </div>
-                <div class="metric">
-                  <span>Valor total da viagem</span>
-                  <strong>R$ 18.750,00</strong>
-                </div>
-                <div class="metric blue">
-                  <span>Guardar por mês</span>
-                  <strong>R$ 625,00</strong>
-                </div>
-                <div class="metric orange">
-                  <span>Tempo para realizar</span>
-                  <strong>30 meses</strong>
-                </div>
-                <button>Ver meu plano completo</button>
               </div>
             </div>
           </div>
@@ -164,10 +130,72 @@
       <section class="final-cta">
         <h2>Pronto para planejar sua próxima viagem?</h2>
         <p>Entre no grupo VIP e receba os próximos passos para montar seu plano.</p>
-        <a class="cta" href="https://wa.me/5500000000000" target="_blank" rel="noreferrer">
+        <button class="cta" type="button" data-open-vip-form>
           Entrar no grupo VIP
-        </a>
+        </button>
       </section>
     </main>
+
+    <div class="modal-backdrop" data-vip-modal hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vip-form-title">
+        <button class="modal-close" type="button" aria-label="Fechar formulário" data-close-vip-form>
+          ×
+        </button>
+        <p class="eyebrow">Grupo VIP</p>
+        <h2 id="vip-form-title">Entre para a lista</h2>
+        <form class="vip-form" data-vip-form>
+          <label>
+            Nome:
+            <input type="text" name="name" autocomplete="name" required>
+          </label>
+          <label>
+            E-mail:
+            <input type="email" name="email" autocomplete="email" required>
+          </label>
+          <button class="cta" type="submit">Entrar no grupo VIP</button>
+        </form>
+      </div>
+    </div>
+
+    <script>
+      const vipGroupUrl = "https://chat.whatsapp.com/LGRGILqVqvQ1kLLgMDhcg9?mode=gi_t";
+      const modal = document.querySelector("[data-vip-modal]");
+      const form = document.querySelector("[data-vip-form]");
+      const openButtons = document.querySelectorAll("[data-open-vip-form]");
+      const closeButton = document.querySelector("[data-close-vip-form]");
+
+      function openVipForm() {
+        modal.hidden = false;
+        document.body.classList.add("modal-open");
+        form.querySelector("input").focus();
+      }
+
+      function closeVipForm() {
+        modal.hidden = true;
+        document.body.classList.remove("modal-open");
+      }
+
+      openButtons.forEach((button) => {
+        button.addEventListener("click", openVipForm);
+      });
+
+      closeButton.addEventListener("click", closeVipForm);
+
+      modal.addEventListener("click", (event) => {
+        if (event.target === modal) {
+          closeVipForm();
+        }
+      });
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+
+        if (!form.reportValidity()) {
+          return;
+        }
+
+        window.location.href = vipGroupUrl;
+      });
+    </script>
   </body>
 </html>
