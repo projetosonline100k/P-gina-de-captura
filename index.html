@@ -42,16 +42,16 @@
             <div class="hero-copy">
               <h1 id="hero-title">
                 Coloque o seu <span>"Destino"</span> que a Planilha Inteligente vai te mostrar quanto você vai precisar
-                guardar por mês para fazer a sua viajem.
+                guardar por mês para fazer a sua viagem.
               </h1>
               <p>
-                No dia 25 eu vou lançar a planilha inteligente em formato de aplicativo, e somente quem estiver
-                dentro do grupo vai conseguir acessar antes de todo mundo.
+                Você só precisa preencher alguns dados da sua viagem e pronto: a Planilha Inteligente mostra
+                quanto guardar por mês para tirar esse plano do papel.
               </p>
-              <button class="cta" type="button" data-open-vip-form>
-                <span class="cta-icon">👥</span>
-                Entrar no grupo VIP
-              </button>
+              <a class="cta" href="https://pay.kiwify.com.br/SLuCcgS">
+                <span class="cta-icon">✅</span>
+                Quero minha planilha
+              </a>
               <div class="trust-note">
                 <span>🔒</span>
                 <small>Site 100% Seguro e Blindado pelo Google.</small>
@@ -71,7 +71,7 @@
           </article>
           <article>
             <span>👨‍👩‍👧‍👦</span>
-            <p>Para quem vai viajar em familia.</p>
+            <p>Para quem vai viajar em família.</p>
           </article>
           <article>
             <span>🛫</span>
@@ -83,37 +83,43 @@
           </article>
           <article>
             <span>🧳</span>
-            <p>Para quem vai fazer sua primeira viajem.</p>
+            <p>Para quem vai fazer sua primeira viagem.</p>
           </article>
         </div>
       </section>
 
       <section class="section steps-section" aria-labelledby="steps-title">
-        <h2 id="steps-title">Ao entrar no <span>grupo VIP</span></h2>
+        <h2 id="steps-title">Veja tudo o que você vai <span>receber</span></h2>
 
         <div class="steps">
           <article>
             <strong>01</strong>
             <div>
-              <h3>Fique tranquilo</h3>
-              <p>Não vamos ficar enviando mensagens o tempo todo nem lotar seu WhatsApp.</p>
-            </div>
-          </article>
-          <article>
-            <strong>02</strong>
-            <div>
-              <h3>Uso exclusivo</h3>
-              <p>O grupo será usado apenas para enviar o acesso para adquirir a planilha.</p>
-            </div>
-          </article>
-          <article>
-            <strong>03</strong>
-            <div>
-              <h3>Acesso antecipado</h3>
-              <p>Quem estiver no grupo vai receber antes de todo mundo o acesso a planilha inteligente.</p>
+              <h3>Planilha Inteligente</h3>
+              <p>A ferramenta para calcular quanto você precisa guardar por mês para fazer a sua viagem.</p>
             </div>
           </article>
         </div>
+      </section>
+
+      <section class="offer" aria-labelledby="offer-title">
+        <p class="eyebrow">Oferta de lançamento</p>
+        <div class="bonus-list" aria-label="Bônus inclusos">
+          <p>
+            <span>🎁</span>
+            As 15 primeiras pessoas que se inscreverem vão receber um bônus exclusivo: um
+            <strong>roteiro personalizado</strong>, que custa R$297 e será de graça.
+          </p>
+          <p>
+            <span>🎁</span>
+            As 50 primeiras pessoas inscritas vão receber meu treinamento de como encontrar passagens baratas
+            utilizando Inteligência Artificial.
+          </p>
+        </div>
+        <h2 id="offer-title">De <span>R$197</span> por apenas R$49,90</h2>
+        <a class="cta" href="https://pay.kiwify.com.br/SLuCcgS">
+          Garantir meu acesso agora
+        </a>
       </section>
 
       <section class="specialist">
@@ -133,112 +139,12 @@
       </section>
 
       <section class="final-cta">
-        <h2>Nunca mais deixe a sua viajem "pro ano que vem".</h2>
-        <p>Entre no grupo VIP e receba os próximos passos para saber quanto vai precisar guardar para fazer a sua viagem.</p>
-        <button class="cta" type="button" data-open-vip-form>
-          Entrar no grupo VIP
-        </button>
+        <h2>Nunca mais deixe a sua viagem "pro ano que vem".</h2>
+        <p>Garanta sua Planilha Inteligente e saiba quanto precisa guardar para fazer a sua viagem.</p>
+        <a class="cta" href="https://pay.kiwify.com.br/SLuCcgS">
+          Garantir o acesso
+        </a>
       </section>
     </main>
-
-    <div class="modal-backdrop" data-vip-modal hidden>
-      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="vip-form-title">
-        <button class="modal-close" type="button" aria-label="Fechar formulário" data-close-vip-form>
-          ×
-        </button>
-        <p class="eyebrow">Grupo VIP</p>
-        <h2 id="vip-form-title">Entre para a lista</h2>
-        <form class="vip-form" data-vip-form>
-          <label>
-            Nome:
-            <input type="text" name="name" autocomplete="name" required>
-          </label>
-          <label>
-            E-mail:
-            <input type="email" name="email" autocomplete="email" required>
-          </label>
-          <p class="form-status" data-form-status hidden></p>
-          <button class="cta" type="submit">Entrar no grupo VIP</button>
-        </form>
-      </div>
-    </div>
-
-    <script>
-      const vipGroupUrl = "https://chat.whatsapp.com/CqOa41YSBjK11MbBsubmGC?mode=gi_t";
-      const leadsWebhookUrl = "https://script.google.com/macros/s/AKfycbw3O0LaNxphFkg0B4ZxlK0vAfzNIQ3l-iJ4W_klDzNYVuL7MSqkacu-dxrCzeq05Bqp/exec";
-      const modal = document.querySelector("[data-vip-modal]");
-      const form = document.querySelector("[data-vip-form]");
-      const formStatus = document.querySelector("[data-form-status]");
-      const openButtons = document.querySelectorAll("[data-open-vip-form]");
-      const closeButton = document.querySelector("[data-close-vip-form]");
-
-      function openVipForm() {
-        modal.hidden = false;
-        document.body.classList.add("modal-open");
-        formStatus.hidden = true;
-        form.querySelector("input").focus();
-      }
-
-      function closeVipForm() {
-        modal.hidden = true;
-        document.body.classList.remove("modal-open");
-      }
-
-      openButtons.forEach((button) => {
-        button.addEventListener("click", openVipForm);
-      });
-
-      closeButton.addEventListener("click", closeVipForm);
-
-      modal.addEventListener("click", (event) => {
-        if (event.target === modal) {
-          closeVipForm();
-        }
-      });
-
-      async function saveLead(formData) {
-        if (!leadsWebhookUrl) {
-          return;
-        }
-
-        await fetch(leadsWebhookUrl, {
-          method: "POST",
-          mode: "no-cors",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8"
-          },
-          body: JSON.stringify({
-            name: formData.get("name"),
-            email: formData.get("email"),
-            created_at: new Date().toISOString(),
-            source: window.location.href
-          })
-        });
-      }
-
-      form.addEventListener("submit", async (event) => {
-        event.preventDefault();
-
-        if (!form.reportValidity()) {
-          return;
-        }
-
-        const submitButton = form.querySelector("button[type='submit']");
-        const formData = new FormData(form);
-
-        submitButton.disabled = true;
-        submitButton.textContent = "Salvando...";
-        formStatus.hidden = false;
-        formStatus.textContent = "Registrando seu acesso...";
-
-        try {
-          await saveLead(formData);
-        } catch (error) {
-          console.error("Erro ao registrar lead:", error);
-        }
-
-        window.location.href = vipGroupUrl;
-      });
-    </script>
   </body>
 </html>
