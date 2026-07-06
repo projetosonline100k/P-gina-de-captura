@@ -393,7 +393,7 @@
 
       function adminRoute() {
         const params = new URLSearchParams(window.location.search);
-        return params.get("admin") === "1" || (!params.has("q") && params.get("preview") !== "1");
+        return params.get("admin") === "1" || (!params.has("q") && !params.has("quiz") && params.get("preview") !== "1");
       }
 
       function render() {
