@@ -3,148 +3,1279 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Plano&amp;Viaje - Viagem dos seus sonhos</title>
+    <title>QuizLab - Dashboard de Quiz Inteligente</title>
     <meta
       name="description"
-      content="Descubra quanto economizar por mês para realizar a viagem dos seus sonhos com uma estratégia simples e personalizada."
+      content="Crie quizzes inteligentes, visualize a pagina e gere links para usuarios responderem."
     >
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:wght@700;800;900&display=swap"
       rel="stylesheet"
     >
-    <!-- Meta Pixel Code -->
-    <script>
-      !function(f,b,e,v,n,t,s)
-      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
-      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
-      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
-      n.queue=[];t=b.createElement(e);t.async=!0;
-      t.src=v;s=b.getElementsByTagName(e)[0];
-      s.parentNode.insertBefore(t,s)}(window, document,'script',
-      'https://connect.facebook.net/en_US/fbevents.js');
-      fbq('init', '3967317053576266');
-      fbq('track', 'PageView');
-    </script>
-    <noscript><img height="1" width="1" style="display:none"
-      src="https://www.facebook.com/tr?id=3967317053576266&ev=PageView&noscript=1"
-    ></noscript>
-    <!-- End Meta Pixel Code -->
     <link rel="stylesheet" href="styles.css">
   </head>
   <body>
-    <main class="page-shell">
-      <section class="hero" aria-labelledby="hero-title">
-        <div class="hero-bg" aria-hidden="true"></div>
-        <div class="hero-content">
-          <div class="hero-grid">
-            <div class="hero-copy">
-              <h1 id="hero-title">
-                Coloque o seu <span>"Destino"</span> que o aplicativo inteligente vai te mostrar quanto você vai precisar
-                guardar por mês para fazer a sua viagem.
-              </h1>
-              <p>
-                Você só precisa preencher alguns dados da sua viagem e pronto: o aplicativo inteligente mostra
-                quanto guardar por mês para tirar esse plano do papel.
-              </p>
-              <a class="cta" href="https://pay.kiwify.com.br/SLuCcgS">
-                <span class="cta-icon">✅</span>
-                Garantir Acesso
-              </a>
-              <div class="trust-note">
-                <span>🔒</span>
-                <small>Site 100% Seguro e Blindado pelo Google.</small>
+    <div id="app"></div>
+
+    <template id="icon-copy">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 8h10v12H8z"></path><path d="M6 16H4V4h12v2"></path></svg>
+    </template>
+
+    <script>
+      const STORAGE_KEY = "quizlab_quizzes_v3";
+      const SUBMISSIONS_KEY = "quizlab_submissions_v1";
+
+      const defaultQuiz = {
+        id: "viagem-inteligente",
+        slug: "viagem-cabe-no-bolso",
+        title: "Descubra se sua Viagem cabe no seu Bolso",
+        subtitle: "Responda 5 perguntas rápidas e receba seu diagnóstico de viagem personalizado e seu perfil de Viajante.",
+        badge: "Aplicativo inteligente",
+        ctaLabel: "Quero organizar minha viagem agora",
+        leadTitle: "Para liberar seu resultado",
+        leadSubtitle: "Preencha seus dados e receba a recomendação personalizada.",
+        purchaseUrl: "https://pay.kiwify.com.br/SLuCcgS",
+        theme: "#0f766e",
+        questions: [
+          {
+            text: "Qual dessas frases mais parece com você hoje?",
+            options: [
+              { text: "Nunca sobra dinheiro no fim do mês pra guardar pra nada", profile: "travado", weight: 3 },
+              { text: "Até sobra, mas eu acabo gastando com outra coisa", profile: "travado", weight: 2 },
+              { text: "Sobra um pouco, mas não é organizado", profile: "organizando", weight: 2 },
+              { text: "Eu sei exatamente quanto sobra todo mês", profile: "pronto", weight: 3 }
+            ]
+          },
+          {
+            text: "Quando você pensa em planejar uma viagem, o que mais te trava?",
+            options: [
+              { text: "Não sei nem por onde começar a organizar", profile: "travado", weight: 3 },
+              { text: "Já tentei antes e não consegui manter", profile: "travado", weight: 2 },
+              { text: "Sei mais ou menos o que fazer, mas não coloco em prática", profile: "organizando", weight: 2 },
+              { text: "Eu sei planejar, só falta decidir a data", profile: "pronto", weight: 3 }
+            ]
+          },
+          {
+            text: "Se o dinheiro não fosse problema agora, para onde você iria?",
+            options: [
+              { text: "🏖 Praia paradisíaca (Maldivas, Fernando de Noronha, Caribe)", profile: "pronto", weight: 2 },
+              { text: "🏙 Uma capital internacional (Nova York, Paris, Tóquio)", profile: "organizando", weight: 2 },
+              { text: "⛰ Natureza e aventura (Patagônia, Bariloche, Chapada)", profile: "organizando", weight: 2 },
+              { text: "🎉 Destino com balada e vida noturna (Miami, Cancún, Ibiza)", profile: "pronto", weight: 1 }
+            ]
+          },
+          {
+            text: "Você já tentou se organizar financeiramente pra viajar antes?",
+            options: [
+              { text: "Já usei planilha/app, mas não consegui manter", profile: "travado", weight: 3 },
+              { text: "Nunca tentei nenhum método, sempre foi na conta do padeiro", profile: "travado", weight: 3 },
+              { text: "Tenho um jeito de me organizar, mas é manual e trabalhoso", profile: "organizando", weight: 2 },
+              { text: "Não, porque não sabia que existia algo assim", profile: "travado", weight: 2 }
+            ]
+          },
+          {
+            text: "Se você soubesse EXATAMENTE quanto precisa guardar por mês pra essa viagem sair do papel, você faria esse esforço?",
+            options: [
+              { text: "Com certeza, só preciso saber o número", profile: "pronto", weight: 3 },
+              { text: "Provavelmente sim", profile: "organizando", weight: 2 },
+              { text: "Não sei se conseguiria me organizar sozinho(a)", profile: "travado", weight: 2 }
+            ]
+          }
+        ],
+        results: [
+          {
+            profile: "travado",
+            title: "Sonhador(a) Travado",
+            text: "Sua viagem é possível. Mas hoje ela está travada não pela falta de dinheiro, e sim pela falta de um plano claro de quanto guardar e até quando. Além disso, com base nos seus dados, essa viagem pode continuar sendo só um sonho por mais 1 a 2 anos.",
+            bullets: [
+              "O cálculo de quanto você precisa guardar por mês pra qualquer destino e data.",
+              "Mostra sua evolução de economia em tempo real.",
+              "Alerta quando você está fora da meta.",
+              "Organiza os gastos da viagem (passagem, hospedagem, extras)."
+            ]
+          },
+          {
+            profile: "organizando",
+            title: "Viajante em Organização",
+            text: "Você já tem vontade e até alguma noção do caminho, mas ainda falta um método simples para transformar a viagem em meta com data marcada.",
+            bullets: [
+              "Meta de economia mensal com destino e prazo.",
+              "Clareza sobre o custo total antes de comprar.",
+              "Organização visual para manter constância.",
+              "Plano simples para não depender de memória."
+            ]
+          },
+          {
+            profile: "pronto",
+            title: "Viajante Pronto(a)",
+            text: "Você está muito perto de tirar a viagem do papel. O que falta agora é colocar números, datas e acompanhamento para comprar com mais segurança.",
+            bullets: [
+              "Cálculo mensal para decidir rápido.",
+              "Organização de gastos antes da compra.",
+              "Acompanhamento da meta até a data da viagem.",
+              "Menos dúvida e mais ação."
+            ]
+          }
+        ]
+      };
+
+      const state = {
+        quizzes: loadQuizzes(),
+        submissions: loadSubmissions(),
+        activeId: null,
+        adminTab: "home",
+        adminStage: 0,
+        flowStage: "intro",
+        previewStep: 0,
+        loadingProgress: 0,
+        answers: [],
+        submittedThisRun: false,
+        lead: { name: "", email: "", phone: "" }
+      };
+
+      function clone(value) {
+        return JSON.parse(JSON.stringify(value));
+      }
+
+      function loadQuizzes() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+          if (Array.isArray(saved) && saved.length) return saved;
+        } catch (error) {}
+        return [clone(defaultQuiz)];
+      }
+
+      function loadSubmissions() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(SUBMISSIONS_KEY));
+          if (Array.isArray(saved)) return saved;
+        } catch (error) {}
+        return [];
+      }
+
+      function saveQuizzes() {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
+      }
+
+      function saveSubmissions() {
+        localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(state.submissions));
+      }
+
+      function uid(prefix = "quiz") {
+        return prefix + "-" + Math.random().toString(36).slice(2, 8);
+      }
+
+      function encodeQuiz(quiz) {
+        const json = JSON.stringify(quiz);
+        return btoa(unescape(encodeURIComponent(json)))
+          .replace(/\+/g, "-")
+          .replace(/\//g, "_")
+          .replace(/=+$/g, "");
+      }
+
+      function decodeQuiz(payload) {
+        const base64 = payload.replace(/-/g, "+").replace(/_/g, "/");
+        const padded = base64 + "=".repeat((4 - base64.length % 4) % 4);
+        return JSON.parse(decodeURIComponent(escape(atob(padded))));
+      }
+
+      function shareUrl(quiz) {
+        const url = new URL(window.location.href);
+        url.search = "";
+        url.hash = "";
+        url.searchParams.set("quiz", slugFor(quiz));
+        url.searchParams.set("q", encodeQuiz(quiz));
+        return url.toString();
+      }
+
+      function previewUrl() {
+        const url = new URL(window.location.href);
+        url.search = "";
+        url.hash = "";
+        url.searchParams.set("preview", "1");
+        return url.toString();
+      }
+
+      function getPublicQuiz() {
+        const params = new URLSearchParams(window.location.search);
+        if (params.get("preview") === "1") return normalizeQuiz(activeQuiz());
+        const encoded = params.get("q");
+        if (!encoded) {
+          const slug = params.get("quiz");
+          if (!slug) return null;
+          return normalizeQuiz(state.quizzes.find((quiz) => slugFor(quiz) === slug) || null);
+        }
+        try {
+          return normalizeQuiz(decodeQuiz(encoded));
+        } catch (error) {
+          return null;
+        }
+      }
+
+      function normalizeQuiz(quiz) {
+        const clean = clone(quiz || defaultQuiz);
+        clean.slug = clean.slug || slugify(clean.title || clean.id || "quiz");
+        clean.questions = (clean.questions || []).filter(Boolean);
+        clean.results = (clean.results || []).filter(Boolean);
+        clean.questions.forEach((question) => {
+          question.options = (question.options || []).filter(Boolean);
+        });
+        if (!clean.questions.length) clean.questions = clone(defaultQuiz.questions);
+        if (!clean.results.length) clean.results = clone(defaultQuiz.results);
+        return clean;
+      }
+
+      function activeQuiz() {
+        if (!state.activeId) state.activeId = state.quizzes[0].id;
+        return state.quizzes.find((quiz) => quiz.id === state.activeId) || state.quizzes[0];
+      }
+
+      function setField(path, value) {
+        const quiz = activeQuiz();
+        if (path === "slug") value = slugify(value);
+        const parts = path.split(".");
+        let target = quiz;
+        while (parts.length > 1) target = target[parts.shift()];
+        target[parts[0]] = value;
+        saveQuizzes();
+        render();
+      }
+
+      function slugify(value) {
+        return String(value || "")
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, "-")
+          .replace(/^-+|-+$/g, "")
+          .slice(0, 60) || "quiz";
+      }
+
+      function slugFor(quiz) {
+        return slugify(quiz.slug || quiz.title || quiz.id);
+      }
+
+      function addQuiz() {
+        const quiz = clone(defaultQuiz);
+        quiz.id = uid("quiz");
+        quiz.title = "Novo quiz inteligente";
+        state.quizzes.unshift(quiz);
+        state.activeId = quiz.id;
+        state.adminStage = 0;
+        state.previewStep = 0;
+        saveQuizzes();
+        render();
+      }
+
+      function duplicateQuiz(id) {
+        const source = state.quizzes.find((quiz) => quiz.id === id);
+        if (!source) return;
+        const quiz = clone(source);
+        quiz.id = uid("quiz");
+        quiz.title = source.title + " - copia";
+        state.quizzes.unshift(quiz);
+        state.activeId = quiz.id;
+        state.adminStage = 0;
+        saveQuizzes();
+        render();
+      }
+
+      function removeQuiz(id) {
+        if (state.quizzes.length === 1) return;
+        state.quizzes = state.quizzes.filter((quiz) => quiz.id !== id);
+        state.activeId = state.quizzes[0].id;
+        state.adminStage = 0;
+        saveQuizzes();
+        render();
+      }
+
+      function addQuestion() {
+        const quiz = activeQuiz();
+        quiz.questions.push({
+          text: "Nova pergunta",
+          options: [
+            { text: "Opcao A", profile: "planejador", weight: 1 },
+            { text: "Opcao B", profile: "economia", weight: 2 }
+          ]
+        });
+        state.adminStage = quiz.questions.length;
+        saveQuizzes();
+        render();
+      }
+
+      function removeQuestion(index) {
+        const quiz = activeQuiz();
+        if (quiz.questions.length === 1) return;
+        quiz.questions.splice(index, 1);
+        state.adminStage = Math.min(state.adminStage, quiz.questions.length);
+        state.previewStep = Math.min(state.previewStep, quiz.questions.length - 1);
+        saveQuizzes();
+        render();
+      }
+
+      function addOption(questionIndex) {
+        activeQuiz().questions[questionIndex].options.push({
+          text: "Nova opcao",
+          profile: "planejador",
+          weight: 1
+        });
+        saveQuizzes();
+        render();
+      }
+
+      function removeOption(questionIndex, optionIndex) {
+        const options = activeQuiz().questions[questionIndex].options;
+        if (options.length === 1) return;
+        options.splice(optionIndex, 1);
+        saveQuizzes();
+        render();
+      }
+
+      function updateOption(questionIndex, optionIndex, key, value) {
+        const option = activeQuiz().questions[questionIndex].options[optionIndex];
+        option[key] = key === "weight" ? Number(value || 0) : value;
+        saveQuizzes();
+        render();
+      }
+
+      function addResult() {
+        activeQuiz().results.push({
+          profile: "novo",
+          title: "Novo resultado",
+          text: "Explique aqui a recomendacao personalizada.",
+          bullets: ["Primeiro beneficio", "Segundo beneficio"]
+        });
+        saveQuizzes();
+        render();
+      }
+
+      function removeResult(index) {
+        const results = activeQuiz().results;
+        if (results.length === 1) return;
+        results.splice(index, 1);
+        saveQuizzes();
+        render();
+      }
+
+      function resultFor(quiz, answers) {
+        const scores = {};
+        answers.forEach((answer, index) => {
+          const option = quiz.questions[index]?.options[answer];
+          if (!option) return;
+          scores[option.profile] = (scores[option.profile] || 0) + Number(option.weight || 1);
+        });
+        const best = Object.entries(scores).sort((a, b) => b[1] - a[1])[0]?.[0];
+        return quiz.results.find((result) => result.profile === best) || quiz.results[0];
+      }
+
+      function recordSubmission(quiz) {
+        if (state.submittedThisRun) return;
+        const result = resultFor(quiz, state.answers);
+        state.submissions.push({
+          id: uid("resposta"),
+          quizId: quiz.id,
+          createdAt: new Date().toISOString(),
+          answers: state.answers.slice(0, quiz.questions.length),
+          resultProfile: result.profile,
+          resultTitle: result.title
+        });
+        state.submittedThisRun = true;
+        saveSubmissions();
+      }
+
+      function copyLink() {
+        const link = shareUrl(activeQuiz());
+        navigator.clipboard?.writeText(link);
+        const field = document.querySelector("[data-share-link]");
+        if (field) field.select();
+      }
+
+      function adminRoute() {
+        const params = new URLSearchParams(window.location.search);
+        return params.get("admin") === "1" || (!params.has("q") && params.get("preview") !== "1");
+      }
+
+      function render() {
+        const publicQuiz = getPublicQuiz();
+        document.getElementById("app").innerHTML = publicQuiz && !adminRoute()
+          ? publicView(publicQuiz)
+          : dashboardView();
+        bindEvents(publicQuiz && !adminRoute() ? publicQuiz : activeQuiz());
+      }
+
+      function dashboardView() {
+        const quiz = activeQuiz();
+        const link = shareUrl(quiz);
+        if (state.adminTab === "home") return adminShell(quiz, link, homeView(quiz));
+        if (state.adminTab === "flow") return adminShell(quiz, link, flowView(quiz));
+        if (state.adminTab === "leads") return adminShell(quiz, link, leadsView(quiz));
+        if (state.adminTab === "design") return adminShell(quiz, link, designView(quiz));
+        if (state.adminTab === "settings") return adminShell(quiz, link, settingsView(quiz, link));
+        const stageNames = [
+          "Boas-vindas",
+          ...quiz.questions.map((_, index) => `Pergunta ${index + 1}`),
+          "Loading",
+          "Resultado",
+          "Publicação"
+        ];
+        const activeStage = Math.min(state.adminStage, stageNames.length - 1);
+        const componentNames = [
+          ["⚠", "Alerta"],
+          ["▤", "Argumentos"],
+          ["☰", "Nível"],
+          ["❞", "Depoimentos"],
+          ["▭", "Botão"],
+          ["▣", "Captura"],
+          ["↕", "Espaço"],
+          ["◫", "Gráficos"],
+          ["▥", "Cartesiano"],
+          ["▧", "Imagem"],
+          ["○", "Loading"],
+          ["☑", "Opções"],
+          ["$", "Preço"],
+          ["T", "Texto"],
+          ["◷", "Timer"],
+          ["▣", "Vídeo"],
+          ["</>", "Script"]
+        ];
+        return adminShell(quiz, link, `
+            <div class="builder-body">
+              <aside class="stage-sidebar">
+                <div class="stage-list">
+                  ${stageNames.map((stage, index) => `
+                    <button class="stage-item ${index === activeStage ? "active" : ""}" data-action="select-stage" data-stage="${index}">
+                      <span>=</span>
+                      ${escapeHtml(stage)}
+                      ${index === stageNames.length - 2 ? "<b>⋮</b>" : ""}
+                    </button>
+                  `).join("")}
+                </div>
+                <button class="add-stage" data-action="add-question">+ adicionar etapa</button>
+              </aside>
+
+              <aside class="component-sidebar">
+                <button class="back-link">‹ voltar</button>
+                <div class="component-list">
+                  ${componentNames.map(([iconValue, name]) => `
+                    <button class="component-pill" data-action="component-pick" data-component="${escapeAttr(name)}"><span>${iconValue}</span>${name}</button>
+                  `).join("")}
+                </div>
+              </aside>
+
+              <section class="canvas-area">
+                <div class="canvas-brand">
+                  <span>IN</span>
+                  <strong>inlead</strong>
+                </div>
+                <div class="canvas-progress"><span></span></div>
+
+                <div class="canvas-preview">
+                  <div class="selected-outline">
+                    ${adminCanvasPreview(quiz)}
+                  </div>
+                </div>
+
+                <div class="canvas-cursor"></div>
+              </section>
+
+              <aside class="settings-panel">
+                <div class="settings-tabs">
+                  <button class="active">Componente</button>
+                  <button>Estilo</button>
+                  <button>Exibição</button>
+                </div>
+
+                <form class="settings-scroll">
+                  <label class="field">
+                    <span>Quiz ativo</span>
+                    <select data-admin-select>
+                      ${state.quizzes.map((item) => `<option value="${item.id}" ${item.id === quiz.id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
+                    </select>
+                  </label>
+
+                  <div class="quick-actions">
+                    <button type="button" class="secondary-btn" data-action="add-quiz">Novo</button>
+                    <button type="button" class="secondary-btn" data-action="duplicate-quiz" data-id="${quiz.id}">Duplicar</button>
+                    <button type="button" class="danger-btn" data-action="remove-quiz" data-id="${quiz.id}">Excluir</button>
+                  </div>
+
+                  <div class="settings-group">
+                    ${adminSettingsPanel(quiz, activeStage, link)}
+                  </div>
+                </form>
+              </aside>
+            </div>
+        `);
+      }
+
+      function adminShell(quiz, link, content) {
+        return `
+          <main class="admin-builder">
+            <header class="builder-topbar">
+              <div class="builder-history">
+                <button aria-label="Voltar">‹</button>
+                <button aria-label="Desfazer">↶</button>
+                <button aria-label="Refazer">↷</button>
+              </div>
+
+              <nav class="builder-tabs" aria-label="Seções do editor">
+                <button class="${state.adminTab === "home" ? "active" : ""}" data-action="select-admin-tab" data-tab="home">⌂ Home</button>
+                <button class="${state.adminTab === "builder" ? "active" : ""}" data-action="select-admin-tab" data-tab="builder">▦ Construtor</button>
+                <button class="${state.adminTab === "flow" ? "active" : ""}" data-action="select-admin-tab" data-tab="flow">⌘ Fluxo</button>
+                <button class="${state.adminTab === "design" ? "active" : ""}" data-action="select-admin-tab" data-tab="design">◇ Design</button>
+                <button class="${state.adminTab === "leads" ? "active" : ""}" data-action="select-admin-tab" data-tab="leads">♙ Leads</button>
+                <button class="${state.adminTab === "settings" ? "active" : ""}" data-action="select-admin-tab" data-tab="settings">⚙ Configurações</button>
+              </nav>
+
+              <div class="builder-actions">
+                <button class="tool-icon" aria-label="Mobile">▯</button>
+                <button class="tool-icon" aria-label="Compartilhar" data-action="copy-link">⌘</button>
+                <a class="tool-icon" href="${escapeAttr(previewUrl())}" target="_blank" rel="noopener" aria-label="Visualizar">▷</a>
+                <button class="save-btn" data-action="save-quiz">Salvar</button>
+                <a class="publish-btn" href="${escapeAttr(link)}" target="_blank" rel="noopener">Publicar</a>
+              </div>
+            </header>
+            ${content}
+          </main>
+        `;
+      }
+
+      function adminCanvasPreview(quiz) {
+        const stage = Math.min(state.adminStage, quiz.questions.length + 3);
+        if (stage > 0 && stage <= quiz.questions.length) {
+          return `
+            <div class="canvas-live-page">
+              ${publicHeader(quiz)}
+              ${questionView(quiz, stage - 1, true)}
+            </div>
+          `;
+        }
+
+        if (stage === quiz.questions.length + 1) {
+          return `
+            <div class="canvas-live-page">
+              ${publicHeader(quiz)}
+              ${loadingView()}
+            </div>
+          `;
+        }
+
+        if (stage === quiz.questions.length + 2) {
+          const result = quiz.results[0] || defaultQuiz.results[0];
+          return `
+            <div class="canvas-live-page">
+              ${publicHeader(quiz)}
+              ${resultView(quiz, result, true)}
+            </div>
+          `;
+        }
+
+        if (stage === quiz.questions.length + 3) {
+          return `
+            <div class="canvas-live-page">
+              ${publicHeader(quiz)}
+              ${introView(quiz, true)}
+            </div>
+          `;
+        }
+
+        return `
+          <div class="canvas-live-page">
+            ${publicHeader(quiz)}
+            ${introView(quiz, true)}
+          </div>
+        `;
+      }
+
+      function adminSettingsPanel(quiz, stage, link) {
+        if (stage === 0) {
+          return `
+            <h3>Boas-vindas</h3>
+            ${textInput("Título", "title", quiz.title)}
+            ${textareaInput("Subtítulo", "subtitle", quiz.subtitle)}
+            <div class="field-row">
+              ${textInput("Selo", "badge", quiz.badge)}
+              ${textInput("Botão", "ctaLabel", quiz.ctaLabel)}
+            </div>
+            <label class="field">
+              <span>Cor principal</span>
+              <input type="color" value="${quiz.theme}" data-field="theme">
+            </label>
+          `;
+        }
+
+        if (stage > 0 && stage <= quiz.questions.length) {
+          return `
+            <div class="section-title compact">
+              <h3>Pergunta ${stage}</h3>
+              <button type="button" class="secondary-btn" data-action="add-question">+ pergunta</button>
+            </div>
+            ${questionEditor(quiz.questions[stage - 1], stage - 1)}
+          `;
+        }
+
+        if (stage === quiz.questions.length + 1) {
+          return `
+            <h3>Loading</h3>
+            <label class="field">
+              <span>Texto superior</span>
+              <input value="Preparando seu diagnóstico" readonly>
+            </label>
+            <label class="field">
+              <span>Progresso inicial</span>
+              <input value="10%" readonly>
+            </label>
+            <p class="settings-note">Essa etapa aparece automaticamente depois da última pergunta.</p>
+          `;
+        }
+
+        if (stage === quiz.questions.length + 2) {
+          return `
+            <div class="section-title compact">
+              <h3>Resultados</h3>
+              <button type="button" class="secondary-btn" data-action="add-result">+ resultado</button>
+            </div>
+            <div class="stack">
+              ${quiz.results.map((result, index) => resultEditor(result, index)).join("")}
+            </div>
+          `;
+        }
+
+        return `
+          <h3>Publicação</h3>
+          ${textInput("Nome do link", "slug", slugFor(quiz))}
+          ${textInput("Link de compra ou WhatsApp", "purchaseUrl", quiz.purchaseUrl)}
+          <div class="copy-row">
+            <input readonly value="${escapeAttr(link)}" data-share-link>
+            <button type="button" class="icon-btn" data-action="copy-link" aria-label="Copiar link">${icon("copy")}</button>
+          </div>
+          <a class="primary-btn full" href="${escapeAttr(link)}" target="_blank" rel="noopener">Abrir link do usuário</a>
+        `;
+      }
+
+      function quizSubmissions(quiz) {
+        return state.submissions.filter((item) => item.quizId === quiz.id);
+      }
+
+      function homeView(quiz) {
+        const submissions = quizSubmissions(quiz);
+        const total = submissions.length;
+        const resultCounts = countBy(submissions, "resultProfile");
+        const topResult = Object.entries(resultCounts).sort((a, b) => b[1] - a[1])[0];
+        const completionRate = total ? "100%" : "0%";
+        return `
+          <section class="admin-page">
+            <div class="admin-page-head">
+              <div>
+                <p class="admin-kicker">Home</p>
+                <h1>Resumo do quiz</h1>
+              </div>
+              <a class="publish-btn" href="${escapeAttr(shareUrl(quiz))}" target="_blank" rel="noopener">Ver página</a>
+            </div>
+
+            <div class="metric-grid">
+              ${metricCard("Respostas", total)}
+              ${metricCard("Perguntas", quiz.questions.length)}
+              ${metricCard("Perfil principal", topResult ? profileLabel(quiz, topResult[0]) : "Sem dados")}
+              ${metricCard("Conclusão", completionRate)}
+            </div>
+
+            <div class="admin-panel-grid">
+              <article class="admin-panel">
+                <h2>Últimas respostas</h2>
+                ${latestSubmissionsTable(quiz, submissions.slice(-6).reverse())}
+              </article>
+              <article class="admin-panel">
+                <h2>Distribuição de perfis</h2>
+                ${profileBars(quiz, submissions)}
+              </article>
+            </div>
+          </section>
+        `;
+      }
+
+      function flowView(quiz) {
+        const submissions = quizSubmissions(quiz);
+        return `
+          <section class="admin-page">
+            <div class="admin-page-head">
+              <div>
+                <p class="admin-kicker">Fluxo</p>
+                <h1>Como as pessoas respondem</h1>
+              </div>
+              <button class="secondary-btn" data-action="clear-submissions">Limpar respostas</button>
+            </div>
+            <div class="flow-map">
+              ${quiz.questions.map((question, qIndex) => questionFlowCard(question, qIndex, submissions)).join("")}
+            </div>
+          </section>
+        `;
+      }
+
+      function leadsView(quiz) {
+        const submissions = quizSubmissions(quiz).slice().reverse();
+        return `
+          <section class="admin-page">
+            <div class="admin-page-head">
+              <div>
+                <p class="admin-kicker">Leads</p>
+                <h1>Respostas recebidas</h1>
+              </div>
+              <button class="secondary-btn" data-action="export-submissions">Exportar CSV</button>
+            </div>
+            <article class="admin-panel">
+              ${latestSubmissionsTable(quiz, submissions)}
+            </article>
+          </section>
+        `;
+      }
+
+      function designView(quiz) {
+        return `
+          <section class="admin-page narrow">
+            <div class="admin-page-head">
+              <div>
+                <p class="admin-kicker">Design</p>
+                <h1>Estilo da página</h1>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
+            <article class="admin-panel design-panel">
+              <label class="field">
+                <span>Cor principal</span>
+                <input type="color" value="${quiz.theme}" data-field="theme">
+              </label>
+              ${textInput("Selo superior", "badge", quiz.badge)}
+              <p class="settings-note">A página pública mantém o modelo das fotos: fundo branco, fonte serifada, progresso em barras e botões cinza.</p>
+            </article>
+          </section>
+        `;
+      }
 
-      <section class="section" aria-labelledby="audience-title">
-        <h2 id="audience-title">O aplicativo inteligente é para quem:</h2>
-        <div class="title-line"></div>
-        <div class="audience-grid">
-          <article>
-            <span>🏝</span>
-            <p>Quem não sabe quanto vai precisar guardar por mês para viajar.</p>
-          </article>
-          <article>
-            <span>👨‍👩‍👧‍👦</span>
-            <p>Para quem vai viajar em família.</p>
-          </article>
-          <article>
-            <span>🛫</span>
-            <p>Para quem não quer mais perder tempo e viajar logo.</p>
-          </article>
-          <article>
-            <span>📋</span>
-            <p>Para quem gosta de se organizar.</p>
-          </article>
-          <article>
-            <span>🧳</span>
-            <p>Para quem vai fazer sua primeira viagem.</p>
-          </article>
-        </div>
-      </section>
+      function settingsView(quiz, link) {
+        return `
+          <section class="admin-page narrow">
+            <div class="admin-page-head">
+              <div>
+                <p class="admin-kicker">Configurações</p>
+                <h1>Publicação e links</h1>
+              </div>
+            </div>
+            <article class="admin-panel settings-publication">
+              <label class="field">
+                <span>Quiz ativo</span>
+                <select data-admin-select>
+                  ${state.quizzes.map((item) => `<option value="${item.id}" ${item.id === quiz.id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
+                </select>
+              </label>
+              ${textInput("Nome do link", "slug", slugFor(quiz))}
+              ${textInput("Link de compra ou WhatsApp", "purchaseUrl", quiz.purchaseUrl)}
+              <label class="field">
+                <span>Link do usuário</span>
+                <input readonly value="${escapeAttr(link)}" data-share-link>
+              </label>
+              <div class="quick-actions">
+                <button type="button" class="secondary-btn" data-action="copy-link">Copiar</button>
+                <button type="button" class="secondary-btn" data-action="add-quiz">Novo</button>
+                <button type="button" class="danger-btn" data-action="remove-quiz" data-id="${quiz.id}">Excluir</button>
+              </div>
+            </article>
+          </section>
+        `;
+      }
 
-      <section class="section steps-section" aria-labelledby="steps-title">
-        <h2 id="steps-title">Veja tudo o que você vai <span>receber</span></h2>
+      function metricCard(label, value) {
+        return `
+          <article class="metric-card">
+            <span>${label}</span>
+            <strong>${escapeHtml(value)}</strong>
+          </article>
+        `;
+      }
 
-        <div class="steps">
-          <article>
-            <strong>01</strong>
-            <div>
-              <h3>Aplicativo inteligente</h3>
-              <p>A ferramenta para calcular quanto você precisa guardar por mês para fazer a sua viagem.</p>
+      function questionFlowCard(question, qIndex, submissions) {
+        const total = submissions.length || 0;
+        return `
+          <article class="flow-card">
+            <div class="flow-card-head">
+              <span>${qIndex + 1}</span>
+              <h2>${escapeHtml(question.text)}</h2>
+            </div>
+            <div class="flow-options">
+              ${question.options.map((option, oIndex) => {
+                const count = submissions.filter((submission) => submission.answers[qIndex] === oIndex).length;
+                const percent = total ? Math.round((count / total) * 100) : 0;
+                return `
+                  <div class="flow-option">
+                    <div><strong>${escapeHtml(option.text)}</strong><small>${count} resposta(s) · ${percent}%</small></div>
+                    <span><i style="width:${percent}%"></i></span>
+                  </div>
+                `;
+              }).join("")}
             </div>
           </article>
-        </div>
-      </section>
+        `;
+      }
 
-      <section class="offer" aria-labelledby="offer-title">
-        <p class="eyebrow">Oferta de lançamento</p>
-        <div class="bonus-list" aria-label="Bônus inclusos">
-          <p>
-            <span>🎁</span>
-            As 15 primeiras pessoas que se inscreverem vão receber um bônus exclusivo: um
-            <strong>roteiro personalizado</strong>, que custa R$297 e será de graça.
-          </p>
-          <p>
-            <span>🎁</span>
-            As 50 primeiras pessoas inscritas vão receber meu treinamento de como encontrar passagens baratas
-            utilizando Inteligência Artificial.
-          </p>
-        </div>
-        <h2 id="offer-title">De <span>R$197</span> por apenas R$49,90</h2>
-        <a class="cta" href="https://pay.kiwify.com.br/SLuCcgS">
-          Garantir meu acesso agora
-        </a>
-      </section>
+      function latestSubmissionsTable(quiz, submissions) {
+        if (!submissions.length) {
+          return `<div class="empty-state">Ainda não tem respostas. Abra o link público, complete o quiz e volte aqui para ver o fluxo.</div>`;
+        }
+        return `
+          <div class="response-table">
+            <div class="response-row head">
+              <span>Data</span><span>Perfil</span><span>Respostas</span>
+            </div>
+            ${submissions.map((submission) => `
+              <div class="response-row">
+                <span>${new Date(submission.createdAt).toLocaleString("pt-BR")}</span>
+                <span>${escapeHtml(profileLabel(quiz, submission.resultProfile))}</span>
+                <span>${submission.answers.map((answer, index) => escapeHtml(quiz.questions[index]?.options[answer]?.text || "-")).join("<br>")}</span>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
 
-      <section class="specialist">
-        <div>
-          <h2>Quem sou eu?</h2>
-          <div class="title-line left"></div>
-          <p>
-            Eu sou o Yuri, nasci em São Paulo - Capital, tenho 25 anos, e comecei a gravar conteúdo no
-            Instagram, tendo hoje 170 mil seguidores, porque eu sou apaixonado por viajar o mundo. E
-            minha missão de vida, é trazer para todos os viajantes o que eu não tive quando fiz as minhas
-            primeiras viagens, que foi organização.
-          </p>
-        </div>
-        <div class="portrait">
-          <img src="assets/foto.png" alt="Yuri, especialista em viagens">
-        </div>
-      </section>
+      function profileBars(quiz, submissions) {
+        if (!submissions.length) return `<div class="empty-state">Sem dados por enquanto.</div>`;
+        const counts = countBy(submissions, "resultProfile");
+        return Object.entries(counts).map(([profile, count]) => {
+          const percent = Math.round((count / submissions.length) * 100);
+          return `
+            <div class="profile-bar">
+              <div><strong>${escapeHtml(profileLabel(quiz, profile))}</strong><span>${count} · ${percent}%</span></div>
+              <em><i style="width:${percent}%"></i></em>
+            </div>
+          `;
+        }).join("");
+      }
 
-      <section class="final-cta">
-        <h2>Nunca mais deixe a sua viagem "pro ano que vem".</h2>
-        <p>Garanta o aplicativo inteligente e saiba quanto precisa guardar para fazer a sua viagem.</p>
-        <a class="cta" href="https://pay.kiwify.com.br/SLuCcgS">
-          Garantir o acesso
-        </a>
-      </section>
-    </main>
+      function countBy(items, key) {
+        return items.reduce((acc, item) => {
+          const value = item[key] || "sem-perfil";
+          acc[value] = (acc[value] || 0) + 1;
+          return acc;
+        }, {});
+      }
+
+      function profileLabel(quiz, profile) {
+        return quiz.results.find((result) => result.profile === profile)?.title || profile;
+      }
+
+      function textInput(label, field, value) {
+        return `
+          <label class="field">
+            <span>${label}</span>
+            <input value="${escapeAttr(value)}" data-field="${field}">
+          </label>
+        `;
+      }
+
+      function textareaInput(label, field, value) {
+        return `
+          <label class="field">
+            <span>${label}</span>
+            <textarea rows="3" data-field="${field}">${escapeHtml(value)}</textarea>
+          </label>
+        `;
+      }
+
+      function questionEditor(question, qIndex) {
+        return `
+          <article class="editor-card">
+            <div class="card-head">
+              <strong>Pergunta ${qIndex + 1}</strong>
+              <button type="button" class="text-btn" data-action="remove-question" data-q="${qIndex}">Remover</button>
+            </div>
+            <label class="field">
+              <span>Texto da pergunta</span>
+              <input value="${escapeAttr(question.text)}" data-question="${qIndex}" data-qkey="text">
+            </label>
+            <div class="option-list">
+              ${question.options.map((option, oIndex) => `
+                <div class="option-editor">
+                  <input value="${escapeAttr(option.text)}" data-option="${qIndex}:${oIndex}" data-okey="text" aria-label="Texto da opcao">
+                  <input value="${escapeAttr(option.profile)}" data-option="${qIndex}:${oIndex}" data-okey="profile" aria-label="Perfil">
+                  <input type="number" min="0" value="${Number(option.weight || 1)}" data-option="${qIndex}:${oIndex}" data-okey="weight" aria-label="Peso">
+                  <button type="button" class="mini-btn" data-action="remove-option" data-q="${qIndex}" data-o="${oIndex}">x</button>
+                </div>
+              `).join("")}
+            </div>
+            <button type="button" class="secondary-btn" data-action="add-option" data-q="${qIndex}">Adicionar opcao</button>
+          </article>
+        `;
+      }
+
+      function resultEditor(result, index) {
+        return `
+          <article class="editor-card">
+            <div class="card-head">
+              <strong>Resultado ${index + 1}</strong>
+              <button type="button" class="text-btn" data-action="remove-result" data-r="${index}">Remover</button>
+            </div>
+            <div class="field-row">
+              <label class="field">
+                <span>Perfil</span>
+                <input value="${escapeAttr(result.profile)}" data-result="${index}" data-rkey="profile">
+              </label>
+              <label class="field">
+                <span>Titulo</span>
+                <input value="${escapeAttr(result.title)}" data-result="${index}" data-rkey="title">
+              </label>
+            </div>
+            <label class="field">
+              <span>Descricao</span>
+              <textarea rows="3" data-result="${index}" data-rkey="text">${escapeHtml(result.text)}</textarea>
+            </label>
+            <label class="field">
+              <span>Beneficios, um por linha</span>
+              <textarea rows="3" data-result="${index}" data-rkey="bullets">${escapeHtml((result.bullets || []).join("\\n"))}</textarea>
+            </label>
+          </article>
+        `;
+      }
+
+      let loadingTimer = null;
+
+      function publicView(quiz) {
+        return `
+          <main class="public-shell" style="--theme:${escapeAttr(quiz.theme)}">
+            ${publicHeader(quiz)}
+            ${quizExperience(quiz, false)}
+          </main>
+        `;
+      }
+
+      function publicHeader(quiz) {
+        return `
+          <header class="public-header">
+            <strong>${escapeHtml(quiz.badge || "Aplicativo inteligente")}</strong>
+          </header>
+        `;
+      }
+
+      function quizExperience(quiz, preview) {
+        if (state.flowStage === "intro") return introView(quiz, preview);
+        if (state.flowStage === "loading") return loadingView();
+        if (state.flowStage === "result") return resultView(quiz, resultFor(quiz, state.answers), preview);
+        return questionView(quiz, Math.min(state.previewStep, quiz.questions.length - 1), preview);
+      }
+
+      function introView(quiz, preview) {
+        return `
+          <section class="quiz-page intro-page" style="--theme:${escapeAttr(quiz.theme)}">
+            <div class="intro-center">
+              <p class="app-kicker">${escapeHtml(quiz.badge || "Aplicativo inteligente")}</p>
+              <h2>${escapeHtml(quiz.title)}</h2>
+              <p>${escapeHtml(quiz.subtitle)}</p>
+              <button class="diagnostic-btn" data-action="${preview ? "preview-start" : "start-quiz"}">Começar o diagnóstico <span>→</span></button>
+              <div class="trust-row" aria-label="Selos de seguranca">
+                <span>🛡 Site seguro</span>
+                <span>🔒 Conexão SSL criptografada</span>
+                <span><b>G</b> Verificado pelo Google</span>
+              </div>
+            </div>
+          </section>
+        `;
+      }
+
+      function loadingView() {
+        return `
+          <section class="quiz-page loading-page">
+            <div class="loading-wrap">
+              <p class="loading-kicker">Preparando seu diagnóstico</p>
+              <h2>Perfeito! Estamos calculando seu diagnóstico de viagem...</h2>
+              <div class="loading-bar"><span style="width:${state.loadingProgress}%"></span></div>
+              <strong class="loading-number">${state.loadingProgress}%</strong>
+              <p class="social-kicker">Enquanto isso, veja quem já organizou a viagem</p>
+              <div class="social-stack">
+                ${socialCard("Jaci", "09:42", "Esse aplicativo me ajudou bastante na viagem que fiz com meu marido, o controle que ele me deu do início ao fim de como se preparar para viagem sem se preocupar com nada, foi tudo maravilhoso")}
+                ${socialCard("Davi", "11:18", "Cara, queria te agradecer por ter criado o aplicativo de viagem, estava há 2 anos sem ver a minha mãe, porque achava que ia gastar muito dinheiro, mas o aplicativo me mostrou que não era nenhum bicho de 7 cabeças, consegui fazer a viagem, levei minha esposa junto, e matamos a saudade. Agora já estou planejando a minha próxima viagem hehe")}
+              </div>
+            </div>
+          </section>
+        `;
+      }
+
+      function socialCard(name, time, text) {
+        return `
+          <article class="social-card">
+            <div class="social-head">
+              <span class="avatar">${escapeHtml(name[0] || "V")}</span>
+              <div><strong>${escapeHtml(name)}</strong><small>online</small></div>
+            </div>
+            <div class="whatsapp-body">
+              <p>${escapeHtml(text)}</p>
+              <span>${escapeHtml(time)} ✓✓</span>
+            </div>
+          </article>
+        `;
+      }
+
+      function questionView(quiz, step, preview) {
+        const question = quiz.questions[step];
+        const answeredIndex = state.answers[step];
+        return `
+          <section class="quiz-page question-page" style="--theme:${escapeAttr(quiz.theme)}">
+            ${progressSegments(quiz.questions.length, step)}
+            <div class="question-block">
+              <h3>${escapeHtml(question.text)}</h3>
+              <div class="answer-stack">
+                ${question.options.map((option, index) => `
+                  <button class="answer-btn ${answeredIndex === index ? "selected" : ""}" data-action="${preview ? "preview-answer" : "answer"}" data-answer="${index}">
+                    <span>${escapeHtml(option.text)}</span>
+                    <b>→</b>
+                  </button>
+                `).join("")}
+              </div>
+            </div>
+          </section>
+        `;
+      }
+
+      function progressSegments(total, current) {
+        return `
+          <div class="segment-progress" aria-label="Progresso">
+            ${Array.from({ length: total }).map((_, index) => `<span class="${index <= current ? "filled" : ""}"></span>`).join("")}
+          </div>
+        `;
+      }
+
+      function resultView(quiz, result, preview) {
+        const titleParts = String(result.title || "").split(" ");
+        const lastWord = titleParts.pop() || "";
+        const firstPart = titleParts.join(" ");
+        return `
+          <section class="quiz-page" style="--theme:${escapeAttr(quiz.theme)}">
+            <div class="result-page">
+              <div class="plane">✈️</div>
+              <p class="result-kicker">Seu perfil</p>
+              <h2>${escapeHtml(firstPart)} <span>${escapeHtml(lastWord)}</span></h2>
+              <div class="diagnosis-box">
+                ${escapeHtml(result.text).split(". ").filter(Boolean).map((part) => `<p>${part.replace(/\.$/, "")}.</p>`).join("")}
+              </div>
+              <h3>Mas você não precisa de mais dinheiro.<br>Precisa de organização.</h3>
+              <div class="result-copy">
+                <p>Quem viaja com frequência não é quem ganha mais, é quem <strong>organiza melhor.</strong></p>
+                <p>Quando você sabe exatamente quanto precisa guardar, por quanto tempo, e pra onde esse dinheiro está indo, a viagem deixa de ser um sonho distante e vira uma meta com data marcada.</p>
+                <p>E por isso que criamos o <strong class="blue">Aplicativo Inteligente de Viagem</strong>, porque ele faz:</p>
+              </div>
+              <ul class="benefit-box">
+                ${(result.bullets || []).map((item) => `<li><span>✓</span>${escapeHtml(item)}</li>`).join("")}
+              </ul>
+              <a class="diagnostic-btn result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener">
+                ${escapeHtml(quiz.ctaLabel)}
+              </a>
+              <button class="text-reset" data-action="${preview ? "preview-reset" : "reset-quiz"}">Refazer diagnóstico</button>
+            </div>
+          </section>
+        `;
+      }
+
+      function leadBox(quiz) {
+        return `
+          <form class="lead-box" data-lead-form>
+            <h4>${escapeHtml(quiz.leadTitle || "Para liberar seu resultado")}</h4>
+            <p>${escapeHtml(quiz.leadSubtitle || "Preencha seus dados para receber a recomendação.")}</p>
+            <input placeholder="Seu nome" name="name" value="${escapeAttr(state.lead.name)}">
+            <input placeholder="Seu e-mail" name="email" value="${escapeAttr(state.lead.email)}">
+            <input placeholder="WhatsApp" name="phone" value="${escapeAttr(state.lead.phone)}">
+          </form>
+        `;
+      }
+
+      function bindEvents(quiz) {
+        const publicQuiz = getPublicQuiz();
+        const isPublicPage = publicQuiz && !adminRoute();
+        if (isPublicPage && state.flowStage === "loading") startLoading();
+        document.querySelectorAll("[data-action]").forEach((element) => {
+          element.addEventListener("click", (event) => {
+            const action = element.dataset.action;
+            if (action === "add-quiz") addQuiz();
+            if (action === "select-admin-tab") {
+              state.adminTab = element.dataset.tab || "home";
+              render();
+            }
+            if (action === "select-quiz") {
+              state.activeId = element.dataset.id;
+              state.adminStage = 0;
+              state.flowStage = "intro";
+              state.previewStep = 0;
+              state.answers = [];
+              render();
+            }
+            if (action === "duplicate-quiz") duplicateQuiz(element.dataset.id);
+            if (action === "remove-quiz") removeQuiz(element.dataset.id);
+            if (action === "select-stage") {
+              state.adminStage = Number(element.dataset.stage || 0);
+              render();
+            }
+            if (action === "add-question") addQuestion();
+            if (action === "remove-question") removeQuestion(Number(element.dataset.q));
+            if (action === "add-option") addOption(Number(element.dataset.q));
+            if (action === "remove-option") removeOption(Number(element.dataset.q), Number(element.dataset.o));
+            if (action === "add-result") addResult();
+            if (action === "remove-result") removeResult(Number(element.dataset.r));
+            if (action === "copy-link") copyLink();
+            if (action === "clear-submissions") {
+              state.submissions = state.submissions.filter((item) => item.quizId !== activeQuiz().id);
+              saveSubmissions();
+              render();
+            }
+            if (action === "export-submissions") exportSubmissions(activeQuiz());
+            if (action === "save-quiz") {
+              saveQuizzes();
+              element.textContent = "Salvo";
+              window.setTimeout(() => { element.textContent = "Salvar"; }, 1100);
+            }
+            if (action === "component-pick") {
+              const name = element.dataset.component;
+              if (name === "Opções") addQuestion();
+              else if (name === "Loading" || name === "Depoimentos") {
+                state.adminStage = activeQuiz().questions.length + 1;
+                render();
+              } else if (name === "Botão" || name === "Texto" || name === "Alerta") {
+                state.adminStage = 0;
+                render();
+              }
+            }
+            if (action === "preview-start" || action === "start-quiz") {
+              state.flowStage = "quiz";
+              state.previewStep = 0;
+              state.answers = [];
+              state.submittedThisRun = false;
+              render();
+            }
+            if (action === "preview-answer" || action === "answer") {
+              state.answers[state.previewStep] = Number(element.dataset.answer);
+              if (state.previewStep >= quiz.questions.length - 1) {
+                if (action === "answer") recordSubmission(quiz);
+                state.flowStage = "loading";
+                state.loadingProgress = 0;
+              } else {
+                state.previewStep += 1;
+              }
+              render();
+            }
+            if (action === "preview-reset" || action === "reset-quiz") {
+              state.flowStage = "intro";
+              state.previewStep = 0;
+              state.loadingProgress = 0;
+              state.answers = [];
+              state.submittedThisRun = false;
+              render();
+            }
+            if (action) event.preventDefault();
+          });
+        });
+
+        document.querySelectorAll("[data-field]").forEach((input) => {
+          input.addEventListener("change", () => setField(input.dataset.field, input.value));
+        });
+
+        document.querySelectorAll("[data-admin-select]").forEach((select) => {
+          select.addEventListener("change", () => {
+            state.activeId = select.value;
+            state.adminStage = 0;
+            state.flowStage = "intro";
+            state.previewStep = 0;
+            state.answers = [];
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-question]").forEach((input) => {
+          input.addEventListener("change", () => {
+            activeQuiz().questions[Number(input.dataset.question)][input.dataset.qkey] = input.value;
+            saveQuizzes();
+            render();
+          });
+        });
+
+        document.querySelectorAll("[data-option]").forEach((input) => {
+          input.addEventListener("change", () => {
+            const [questionIndex, optionIndex] = input.dataset.option.split(":").map(Number);
+            updateOption(questionIndex, optionIndex, input.dataset.okey, input.value);
+          });
+        });
+
+        document.querySelectorAll("[data-result]").forEach((input) => {
+          input.addEventListener("change", () => {
+            const result = activeQuiz().results[Number(input.dataset.result)];
+            result[input.dataset.rkey] = input.dataset.rkey === "bullets"
+              ? input.value.split("\n").filter(Boolean)
+              : input.value;
+            saveQuizzes();
+            render();
+          });
+        });
+
+        const leadForm = document.querySelector("[data-lead-form]");
+        if (leadForm) {
+          leadForm.addEventListener("input", () => {
+            state.lead = Object.fromEntries(new FormData(leadForm).entries());
+          });
+        }
+      }
+
+      function startLoading() {
+        if (loadingTimer) return;
+        loadingTimer = window.setInterval(() => {
+          if (state.flowStage !== "loading") {
+            window.clearInterval(loadingTimer);
+            loadingTimer = null;
+            return;
+          }
+          state.loadingProgress = Math.min(100, state.loadingProgress + 10);
+          if (state.loadingProgress >= 100) {
+            window.clearInterval(loadingTimer);
+            loadingTimer = null;
+            state.flowStage = "result";
+          }
+          render();
+        }, 1000);
+      }
+
+      function exportSubmissions(quiz) {
+        const rows = quizSubmissions(quiz);
+        const headers = ["data", "perfil", ...quiz.questions.map((_, index) => `pergunta_${index + 1}`)];
+        const lines = [headers.join(",")].concat(rows.map((row) => {
+          const values = [
+            new Date(row.createdAt).toLocaleString("pt-BR"),
+            profileLabel(quiz, row.resultProfile),
+            ...row.answers.map((answer, index) => quiz.questions[index]?.options[answer]?.text || "")
+          ];
+          return values.map((value) => `"${String(value).replace(/"/g, '""')}"`).join(",");
+        }));
+        const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${quiz.id}-respostas.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+
+      function icon(name) {
+        return document.getElementById("icon-" + name)?.innerHTML || "";
+      }
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function escapeAttr(value) {
+        return escapeHtml(value).replace(/`/g, "&#096;");
+      }
+
+      render();
+    </script>
   </body>
 </html>
