@@ -708,19 +708,9 @@ select:focus {
   background: #fff;
 }
 
-.canvas-live-page .public-header {
-  position: sticky;
-  height: 74px;
-  grid-template-columns: 1fr;
-}
-
-.canvas-live-page .public-header strong {
-  font-size: 15px;
-}
-
 .canvas-live-page .intro-page,
 .canvas-live-page .question-page {
-  min-height: calc(100vh - 262px);
+  min-height: calc(100vh - 188px);
 }
 
 .canvas-live-page .intro-page {
@@ -1165,27 +1155,6 @@ select:focus {
   color: #2b2f36;
 }
 
-.public-header {
-  position: sticky;
-  top: 0;
-  z-index: 10;
-  display: grid;
-  grid-template-columns: 1fr;
-  align-items: center;
-  height: 92px;
-  border-bottom: 1px solid #dfe6ee;
-  background: rgba(255, 255, 255, 0.96);
-}
-
-.public-header strong {
-  justify-self: center;
-  color: var(--navy);
-  font-size: 19px;
-  font-weight: 900;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-}
-
 .quiz-page {
   width: min(100%, 1040px);
   margin: 0 auto;
@@ -1194,7 +1163,7 @@ select:focus {
 
 .intro-page {
   display: grid;
-  min-height: calc(100vh - 92px);
+  min-height: 100vh;
   place-items: center;
 }
 
@@ -1280,7 +1249,7 @@ select:focus {
 }
 
 .question-page {
-  min-height: calc(100vh - 92px);
+  min-height: 100vh;
   padding-top: 194px;
 }
 
@@ -1721,19 +1690,20 @@ select:focus {
     padding: 12px;
   }
 
-  .public-header {
-    grid-template-columns: 74px 1fr 74px;
-    height: 76px;
-  }
-
-  .public-header strong {
-    font-size: 13px;
-    letter-spacing: 0.16em;
-  }
-
   .intro-page,
   .question-page {
-    min-height: calc(100vh - 76px);
+    min-height: 100svh;
+  }
+
+  .quiz-page {
+    padding-right: 18px;
+    padding-left: 18px;
+  }
+
+  .intro-page {
+    align-content: start;
+    padding-top: 58px;
+    padding-bottom: 30px;
   }
 
   .intro-center {
@@ -1744,66 +1714,81 @@ select:focus {
   .loading-kicker,
   .result-kicker,
   .social-kicker {
-    font-size: 12px;
-    letter-spacing: 0.18em;
+    margin-bottom: 24px;
+    font-size: 10px;
+    letter-spacing: 0.16em;
   }
 
   .intro-center h2 {
-    font-size: 42px;
+    margin-bottom: 22px;
+    font-size: 34px;
+    line-height: 1.08;
   }
 
   .intro-center > p:not(.app-kicker) {
-    margin-bottom: 34px;
-    font-size: 19px;
+    margin-bottom: 26px;
+    font-size: 16px;
+    line-height: 1.45;
   }
 
   .diagnostic-btn {
     min-width: 0;
     width: 100%;
-    min-height: 64px;
-    padding: 0 18px;
-    font-size: 17px;
+    min-height: 56px;
+    padding: 0 14px;
+    border-radius: 10px;
+    font-size: 14px;
+    letter-spacing: 0.08em;
   }
 
   .trust-row {
     align-items: center;
     flex-direction: column;
-    gap: 10px;
-    font-size: 14px;
+    gap: 8px;
+    margin-top: 22px;
+    font-size: 12px;
   }
 
   .question-page {
-    padding-top: 92px;
+    padding-top: 44px;
+    padding-bottom: 32px;
   }
 
   .segment-progress {
     gap: 6px;
-    margin-bottom: 42px;
+    margin-bottom: 30px;
   }
 
   .question-block h3 {
-    margin-bottom: 34px;
-    font-size: 34px;
+    margin-bottom: 28px;
+    font-size: 28px;
+    line-height: 1.12;
   }
 
   .answer-btn {
-    min-height: 70px;
-    padding: 0 18px;
+    min-height: 58px;
+    padding: 0 14px;
+    border-radius: 12px;
   }
 
   .answer-btn span {
-    font-size: 17px;
+    font-size: 15px;
+    line-height: 1.28;
+  }
+
+  .answer-btn b {
+    font-size: 24px;
   }
 
   .loading-wrap h2,
   .result-page h3 {
-    font-size: 32px;
+    font-size: 28px;
   }
 
   .social-card p,
   .result-copy p,
   .benefit-box li {
-    font-size: 17px;
+    font-size: 15px;
   }
 
   .result-page {
@@ -1811,7 +1796,7 @@ select:focus {
   }
 
   .result-page h2 {
-    font-size: 42px;
+    font-size: 34px;
   }
 
   .diagnosis-box {

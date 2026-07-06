@@ -8,6 +8,29 @@
       name="description"
       content="Crie quizzes inteligentes, visualize a pagina e gere links para usuarios responderem."
     >
+    <!-- Meta Pixel Code -->
+    <script>
+      !function(f,b,e,v,n,t,s)
+      {if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+      n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+      if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+      n.queue=[];t=b.createElement(e);t.async=!0;
+      t.src=v;s=b.getElementsByTagName(e)[0];
+      s.parentNode.insertBefore(t,s)}(window, document,'script',
+      'https://connect.facebook.net/en_US/fbevents.js');
+      fbq('init', '3967317053576266');
+      fbq('track', 'PageView');
+    </script>
+    <noscript>
+      <img
+        height="1"
+        width="1"
+        style="display:none"
+        src="https://www.facebook.com/tr?id=3967317053576266&ev=PageView&noscript=1"
+        alt=""
+      >
+    </noscript>
+    <!-- End Meta Pixel Code -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -546,7 +569,6 @@
         if (stage > 0 && stage <= quiz.questions.length) {
           return `
             <div class="canvas-live-page">
-              ${publicHeader(quiz)}
               ${questionView(quiz, stage - 1, true)}
             </div>
           `;
@@ -555,7 +577,6 @@
         if (stage === quiz.questions.length + 1) {
           return `
             <div class="canvas-live-page">
-              ${publicHeader(quiz)}
               ${loadingView()}
             </div>
           `;
@@ -565,7 +586,6 @@
           const result = quiz.results[0] || defaultQuiz.results[0];
           return `
             <div class="canvas-live-page">
-              ${publicHeader(quiz)}
               ${resultView(quiz, result, true)}
             </div>
           `;
@@ -574,7 +594,6 @@
         if (stage === quiz.questions.length + 3) {
           return `
             <div class="canvas-live-page">
-              ${publicHeader(quiz)}
               ${introView(quiz, true)}
             </div>
           `;
@@ -582,7 +601,6 @@
 
         return `
           <div class="canvas-live-page">
-            ${publicHeader(quiz)}
             ${introView(quiz, true)}
           </div>
         `;
@@ -941,17 +959,8 @@
       function publicView(quiz) {
         return `
           <main class="public-shell" style="--theme:${escapeAttr(quiz.theme)}">
-            ${publicHeader(quiz)}
             ${quizExperience(quiz, false)}
           </main>
-        `;
-      }
-
-      function publicHeader(quiz) {
-        return `
-          <header class="public-header">
-            <strong>${escapeHtml(quiz.badge || "Aplicativo inteligente")}</strong>
-          </header>
         `;
       }
 
