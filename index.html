@@ -49,6 +49,9 @@
     <script>
       const STORAGE_KEY = "quizlab_quizzes_v3";
       const SUBMISSIONS_KEY = "quizlab_submissions_v1";
+      const FUNNEL_KEY = "quizlab_funnel_v1";
+      const SUPABASE_URL = "https://iofaapgqxixcvgxizjyu.supabase.co";
+      const SUPABASE_KEY = "sb_publishable_3PLbdXuIHwBmQDA0gMbqdw_ZfBTT1a1";
 
       const defaultQuiz = {
         id: "viagem-inteligente",
@@ -147,6 +150,7 @@
       const state = {
         quizzes: loadQuizzes(),
         submissions: loadSubmissions(),
+        funnel: loadFunnel(),
         activeId: null,
         adminTab: "home",
         adminStage: 0,
@@ -155,7 +159,10 @@
         loadingProgress: 0,
         answers: [],
         submittedThisRun: false,
-        lead: { name: "", email: "", phone: "" }
+        lead: { name: "", email: "", phone: "" },
+        remoteLoaded: false,
+        remoteLoading: false,
+        remoteError: ""
       };
 
       function clone(value) {
@@ -178,12 +185,153 @@
         return [];
       }
 
+      function loadFunnel() {
+        try {
+          const saved = JSON.parse(localStorage.getItem(FUNNEL_KEY));
+          if (Array.isArray(saved)) return saved;
+        } catch (error) {}
+        return [];
+      }
+
       function saveQuizzes() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
       }
 
       function saveSubmissions() {
         localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(state.submissions));
+      }
+
+      function saveFunnel() {
+        localStorage.setItem(FUNNEL_KEY, JSON.stringify(state.funnel));
+      }
+
+      function supabaseEnabled() {
+        return SUPABASE_URL && SUPABASE_KEY;
+      }
+
+      async function supabaseRequest(path, options = {}) {
+        if (!supabaseEnabled()) return null;
+        const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+          method: options.method || "GET",
+          headers: {
+            apikey: SUPABASE_KEY,
+            Authorization: `Bearer ${SUPABASE_KEY}`,
+            "Content-Type": "application/json",
+            ...(options.prefer ? { Prefer: options.prefer } : {})
+          },
+          body: options.body ? JSON.stringify(options.body) : undefined
+        });
+        if (!response.ok) {
+          const detail = await response.text();
+          throw new Error(detail || `Supabase retornou ${response.status}`);
+        }
+        if (response.status === 204) return null;
+        return response.json();
+      }
+
+      function remoteSubmission(row) {
+        return {
+          id: row.id,
+          quizId: row.quiz_id,
+          createdAt: row.created_at,
+          answers: row.answers || [],
+          resultProfile: row.result_profile,
+          resultTitle: row.result_title
+        };
+      }
+
+      function remoteFunnel(row) {
+        return {
+          sessionId: row.session_id,
+          quizId: row.quiz_id,
+          createdAt: row.created_at,
+          updatedAt: row.updated_at,
+          maxRank: row.max_rank,
+          stage: row.stage
+        };
+      }
+
+      function submissionPayload(submission) {
+        return {
+          id: submission.id,
+          quiz_id: submission.quizId,
+          created_at: submission.createdAt,
+          answers: submission.answers,
+          result_profile: submission.resultProfile,
+          result_title: submission.resultTitle
+        };
+      }
+
+      function funnelPayload(record) {
+        return {
+          session_id: record.sessionId,
+          quiz_id: record.quizId,
+          created_at: record.createdAt,
+          updated_at: record.updatedAt,
+          max_rank: record.maxRank,
+          stage: record.stage
+        };
+      }
+
+      function mergeUnique(localItems, remoteItems, key) {
+        const map = new Map();
+        [...localItems, ...remoteItems].forEach((item) => map.set(item[key], item));
+        return [...map.values()];
+      }
+
+      async function loadRemoteData() {
+        if (!supabaseEnabled() || state.remoteLoading || state.remoteLoaded) return;
+        state.remoteLoading = true;
+        try {
+          const [submissionRows, funnelRows] = await Promise.all([
+            supabaseRequest("quiz_submissions?select=*&order=created_at.asc"),
+            supabaseRequest("quiz_funnel?select=*&order=updated_at.asc")
+          ]);
+          state.submissions = mergeUnique(state.submissions, (submissionRows || []).map(remoteSubmission), "id");
+          state.funnel = mergeUnique(state.funnel, (funnelRows || []).map(remoteFunnel), "sessionId");
+          state.remoteLoaded = true;
+          state.remoteError = "";
+          saveSubmissions();
+          saveFunnel();
+        } catch (error) {
+          console.warn("Supabase ainda nao esta pronto:", error);
+          state.remoteError = "Supabase ainda não conectado. Confira as tabelas e políticas.";
+        } finally {
+          state.remoteLoading = false;
+          render();
+        }
+      }
+
+      function syncSubmission(submission) {
+        supabaseRequest("quiz_submissions", {
+          method: "POST",
+          prefer: "resolution=merge-duplicates",
+          body: submissionPayload(submission)
+        }).catch((error) => {
+          console.warn("Nao foi possivel salvar resposta no Supabase:", error);
+          state.remoteError = "Resposta salva localmente. Supabase ainda não conectado.";
+        });
+      }
+
+      function syncFunnel(record) {
+        supabaseRequest("quiz_funnel", {
+          method: "POST",
+          prefer: "resolution=merge-duplicates",
+          body: funnelPayload(record)
+        }).catch((error) => {
+          console.warn("Nao foi possivel salvar funil no Supabase:", error);
+          state.remoteError = "Funil salvo localmente. Supabase ainda não conectado.";
+        });
+      }
+
+      function deleteRemoteQuizData(quizId) {
+        Promise.all([
+          supabaseRequest(`quiz_submissions?quiz_id=eq.${encodeURIComponent(quizId)}`, { method: "DELETE" }),
+          supabaseRequest(`quiz_funnel?quiz_id=eq.${encodeURIComponent(quizId)}`, { method: "DELETE" })
+        ]).catch((error) => {
+          console.warn("Nao foi possivel limpar dados no Supabase:", error);
+          state.remoteError = "Dados locais limpos. Supabase não conseguiu limpar remoto.";
+        });
       }
 
       function uid(prefix = "quiz") {
@@ -395,16 +543,80 @@
       function recordSubmission(quiz) {
         if (state.submittedThisRun) return;
         const result = resultFor(quiz, state.answers);
-        state.submissions.push({
+        const submission = {
           id: uid("resposta"),
           quizId: quiz.id,
           createdAt: new Date().toISOString(),
           answers: state.answers.slice(0, quiz.questions.length),
           resultProfile: result.profile,
           resultTitle: result.title
-        });
+        };
+        state.submissions.push(submission);
         state.submittedThisRun = true;
         saveSubmissions();
+        syncSubmission(submission);
+      }
+
+      function visitorSessionId() {
+        let id = sessionStorage.getItem("quizlab_session_id");
+        if (!id) {
+          id = uid("sessao");
+          sessionStorage.setItem("quizlab_session_id", id);
+        }
+        return id;
+      }
+
+      function funnelSteps(quiz) {
+        return [
+          { key: "visit", label: "Abertura", rank: 0 },
+          { key: "start", label: "Começou", rank: 1 },
+          ...quiz.questions.map((_, index) => ({
+            key: `question-${index + 1}`,
+            label: `Pergunta ${index + 1}`,
+            rank: index + 2
+          })),
+          { key: "loading", label: "Loading", rank: quiz.questions.length + 2 },
+          { key: "result", label: "Resultado", rank: quiz.questions.length + 3 }
+        ];
+      }
+
+      function currentFunnelStep(quiz) {
+        if (state.flowStage === "quiz") {
+          return funnelSteps(quiz)[Math.min(state.previewStep + 2, quiz.questions.length + 1)];
+        }
+        if (state.flowStage === "loading") return { key: "loading", rank: quiz.questions.length + 2 };
+        if (state.flowStage === "result") return { key: "result", rank: quiz.questions.length + 3 };
+        return { key: "visit", rank: 0 };
+      }
+
+      function recordFunnelProgress(quiz) {
+        if (adminRoute()) return;
+        const sessionId = `${visitorSessionId()}:${quiz.id}`;
+        const step = currentFunnelStep(quiz);
+        let record = state.funnel.find((item) => item.sessionId === sessionId && item.quizId === quiz.id);
+        let changed = false;
+        if (!record) {
+          record = {
+            sessionId,
+            quizId: quiz.id,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+            maxRank: 0,
+            stage: "visit"
+          };
+          state.funnel.push(record);
+          changed = true;
+        }
+        if (step.rank > Number(record.maxRank || 0)) {
+          record.maxRank = step.rank;
+          record.stage = step.key;
+          changed = true;
+        }
+        if (changed) {
+          record.updatedAt = new Date().toISOString();
+          saveFunnel();
+          syncFunnel(record);
+        }
       }
 
       function copyLink() {
@@ -421,10 +633,13 @@
 
       function render() {
         const publicQuiz = getPublicQuiz();
-        document.getElementById("app").innerHTML = publicQuiz && !adminRoute()
+        const isPublic = publicQuiz && !adminRoute();
+        if (isPublic) recordFunnelProgress(publicQuiz);
+        if (!isPublic && !state.remoteError) loadRemoteData();
+        document.getElementById("app").innerHTML = isPublic
           ? publicView(publicQuiz)
           : dashboardView();
-        bindEvents(publicQuiz && !adminRoute() ? publicQuiz : activeQuiz());
+        bindEvents(isPublic ? publicQuiz : activeQuiz());
       }
 
       function dashboardView() {
@@ -559,9 +774,18 @@
                 <a class="publish-btn" href="${escapeAttr(link)}" target="_blank" rel="noopener">Publicar</a>
               </div>
             </header>
+            ${remoteStatusView()}
             ${content}
           </main>
         `;
+      }
+
+      function remoteStatusView() {
+        if (!supabaseEnabled()) return "";
+        if (state.remoteLoading) return `<div class="remote-status loading">Conectando ao Supabase...</div>`;
+        if (state.remoteError) return `<div class="remote-status error">${escapeHtml(state.remoteError)}</div>`;
+        if (state.remoteLoaded) return `<div class="remote-status online">Supabase conectado. Respostas e funil serão salvos online.</div>`;
+        return "";
       }
 
       function adminCanvasPreview(quiz) {
@@ -676,6 +900,19 @@
         return state.submissions.filter((item) => item.quizId === quiz.id);
       }
 
+      function quizFunnelRecords(quiz) {
+        const records = state.funnel.filter((item) => item.quizId === quiz.id);
+        const resultRank = quiz.questions.length + 3;
+        const completedTracked = records.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
+        const missingCompleted = Math.max(0, quizSubmissions(quiz).length - completedTracked);
+        return records.concat(Array.from({ length: missingCompleted }).map((_, index) => ({
+          sessionId: `resposta-antiga-${index}`,
+          quizId: quiz.id,
+          maxRank: resultRank,
+          stage: "result"
+        })));
+      }
+
       function homeView(quiz) {
         const submissions = quizSubmissions(quiz);
         const total = submissions.length;
@@ -715,6 +952,7 @@
 
       function flowView(quiz) {
         const submissions = quizSubmissions(quiz);
+        const funnelRecords = quizFunnelRecords(quiz);
         return `
           <section class="admin-page">
             <div class="admin-page-head">
@@ -724,6 +962,7 @@
               </div>
               <button class="secondary-btn" data-action="clear-submissions">Limpar respostas</button>
             </div>
+            ${funnelView(quiz, funnelRecords)}
             <div class="flow-map">
               ${quiz.questions.map((question, qIndex) => questionFlowCard(question, qIndex, submissions)).join("")}
             </div>
@@ -807,6 +1046,51 @@
           <article class="metric-card">
             <span>${label}</span>
             <strong>${escapeHtml(value)}</strong>
+          </article>
+        `;
+      }
+
+      function funnelView(quiz, records) {
+        const steps = funnelSteps(quiz);
+        if (!records.length) {
+          return `
+            <article class="funnel-panel empty">
+              <div>
+                <p class="admin-kicker">Funil</p>
+                <h2>Passagem por etapa</h2>
+              </div>
+              <p>Abra o link público e faça um teste para começar a medir onde as pessoas avançam ou param.</p>
+            </article>
+          `;
+        }
+
+        const total = records.filter((item) => Number(item.maxRank || 0) >= 0).length || 1;
+        return `
+          <article class="funnel-panel">
+            <div class="funnel-head">
+              <div>
+                <p class="admin-kicker">Funil</p>
+                <h2>Passagem por etapa</h2>
+              </div>
+              <strong>${total} visitante(s)</strong>
+            </div>
+            <div class="funnel-chart">
+              ${steps.map((step, index) => {
+                const count = records.filter((item) => Number(item.maxRank || 0) >= step.rank).length;
+                const previous = index === 0 ? count : records.filter((item) => Number(item.maxRank || 0) >= steps[index - 1].rank).length;
+                const percent = Math.round((count / total) * 100);
+                const drop = Math.max(0, previous - count);
+                return `
+                  <div class="funnel-step" style="--pct:${percent}">
+                    <span>${escapeHtml(step.label)}</span>
+                    <b>${percent}%</b>
+                    <strong>${count}</strong>
+                    <small>${drop ? `-${drop} queda` : "sem queda"}</small>
+                    <i></i>
+                  </div>
+                `;
+              }).join("")}
+            </div>
           </article>
         `;
       }
@@ -1128,8 +1412,12 @@
             if (action === "remove-result") removeResult(Number(element.dataset.r));
             if (action === "copy-link") copyLink();
             if (action === "clear-submissions") {
+              const quizId = activeQuiz().id;
               state.submissions = state.submissions.filter((item) => item.quizId !== activeQuiz().id);
+              state.funnel = state.funnel.filter((item) => item.quizId !== activeQuiz().id);
               saveSubmissions();
+              saveFunnel();
+              deleteRemoteQuizData(quizId);
               render();
             }
             if (action === "export-submissions") exportSubmissions(activeQuiz());
