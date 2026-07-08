@@ -300,8 +300,8 @@
             supabaseRequest("quiz_submissions?select=*&order=created_at.asc"),
             supabaseRequest("quiz_funnel?select=*&order=updated_at.asc")
           ]);
-          state.submissions = mergeUnique(state.submissions, (submissionRows || []).map(remoteSubmission), "id");
-          state.funnel = mergeUnique(state.funnel, (funnelRows || []).map(remoteFunnel), "sessionId");
+          state.submissions = (submissionRows || []).map(remoteSubmission);
+          state.funnel = (funnelRows || []).map(remoteFunnel);
           state.remoteLoaded = true;
           state.remoteError = "";
           saveSubmissions();
@@ -566,6 +566,7 @@
 
       function recordSubmission(quiz) {
         if (state.submittedThisRun) return;
+        if (isTestName(state.lead.name)) return;
         const result = resultFor(quiz, state.answers);
         const submission = {
           id: uid("resposta"),
@@ -589,6 +590,35 @@
           sessionStorage.setItem("quizlab_session_id", id);
         }
         return id;
+      }
+
+      function currentFunnelSessionId(quiz) {
+        return `${visitorSessionId()}:${quiz.id}`;
+      }
+
+      function ignoredSessionKey(quiz) {
+        return `quizlab_ignore_tracking_${quiz.id}`;
+      }
+
+      function isCurrentRunIgnored(quiz) {
+        return sessionStorage.getItem(ignoredSessionKey(quiz)) === "1";
+      }
+
+      function setCurrentRunIgnored(quiz, ignored) {
+        if (ignored) sessionStorage.setItem(ignoredSessionKey(quiz), "1");
+        else sessionStorage.removeItem(ignoredSessionKey(quiz));
+      }
+
+      function normalizeName(value) {
+        return String(value || "")
+          .trim()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .toLowerCase();
+      }
+
+      function isTestName(value) {
+        return normalizeName(value).includes("teste");
       }
 
       function funnelSteps(quiz) {
@@ -619,7 +649,8 @@
 
       function recordFunnelStep(quiz, step) {
         if (adminRoute()) return;
-        const sessionId = `${visitorSessionId()}:${quiz.id}`;
+        if (isCurrentRunIgnored(quiz)) return;
+        const sessionId = currentFunnelSessionId(quiz);
         let record = state.funnel.find((item) => item.sessionId === sessionId && item.quizId === quiz.id);
         let changed = false;
         if (!record) {
@@ -652,6 +683,14 @@
 
       function recordCheckoutClick(quiz) {
         recordFunnelStep(quiz, { key: "checkout", rank: quiz.questions.length + 5 });
+      }
+
+      function removeCurrentFunnelRecord(quiz) {
+        const sessionId = currentFunnelSessionId(quiz);
+        state.funnel = state.funnel.filter((item) => item.sessionId !== sessionId);
+        saveFunnel();
+        supabaseRequest(`quiz_funnel?session_id=eq.${encodeURIComponent(sessionId)}`, { method: "DELETE" })
+          .catch((error) => console.warn("Nao foi possivel remover funil de teste:", error));
       }
 
       function copyLink() {
@@ -944,7 +983,7 @@
       }
 
       function quizSubmissions(quiz) {
-        return state.submissions.filter((item) => item.quizId === quiz.id);
+        return state.submissions.filter((item) => item.quizId === quiz.id && !isTestName(item.travelerName));
       }
 
       function quizFunnelRecords(quiz) {
@@ -1535,6 +1574,7 @@
               }
             }
             if (action === "preview-start" || action === "start-quiz") {
+              setCurrentRunIgnored(quiz, false);
               state.flowStage = "name";
               state.previewStep = 0;
               state.answers = [];
@@ -1549,6 +1589,12 @@
                 return;
               }
               state.lead = { ...state.lead, name };
+              if (action === "name-next" && isTestName(name)) {
+                setCurrentRunIgnored(quiz, true);
+                removeCurrentFunnelRecord(quiz);
+              } else if (action === "name-next") {
+                setCurrentRunIgnored(quiz, false);
+              }
               state.flowStage = "quiz";
               state.previewStep = 0;
               state.answers = [];
@@ -1573,6 +1619,7 @@
               state.answers = [];
               state.submittedThisRun = false;
               state.lead = { name: "", email: "", phone: "" };
+              setCurrentRunIgnored(quiz, false);
               render();
             }
             if (action) event.preventDefault();
