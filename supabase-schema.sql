@@ -2,10 +2,14 @@ create table if not exists public.quiz_submissions (
   id text primary key,
   quiz_id text not null,
   created_at timestamptz not null default now(),
+  traveler_name text,
   answers jsonb not null default '[]'::jsonb,
   result_profile text,
   result_title text
 );
+
+alter table public.quiz_submissions
+add column if not exists traveler_name text;
 
 create table if not exists public.quiz_funnel (
   session_id text primary key,

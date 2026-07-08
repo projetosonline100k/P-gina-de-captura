@@ -234,6 +234,7 @@
           id: row.id,
           quizId: row.quiz_id,
           createdAt: row.created_at,
+          travelerName: row.traveler_name || "",
           answers: row.answers || [],
           resultProfile: row.result_profile,
           resultTitle: row.result_title
@@ -256,6 +257,7 @@
           id: submission.id,
           quiz_id: submission.quizId,
           created_at: submission.createdAt,
+          traveler_name: submission.travelerName || "",
           answers: submission.answers,
           result_profile: submission.resultProfile,
           result_title: submission.resultTitle
@@ -547,6 +549,7 @@
           id: uid("resposta"),
           quizId: quiz.id,
           createdAt: new Date().toISOString(),
+          travelerName: state.lead.name || "",
           answers: state.answers.slice(0, quiz.questions.length),
           resultProfile: result.profile,
           resultTitle: result.title
@@ -570,22 +573,24 @@
         return [
           { key: "visit", label: "Abertura", rank: 0 },
           { key: "start", label: "Começou", rank: 1 },
+          { key: "name", label: "Nome", rank: 2 },
           ...quiz.questions.map((_, index) => ({
             key: `question-${index + 1}`,
             label: `Pergunta ${index + 1}`,
-            rank: index + 2
+            rank: index + 3
           })),
-          { key: "loading", label: "Loading", rank: quiz.questions.length + 2 },
-          { key: "result", label: "Resultado", rank: quiz.questions.length + 3 }
+          { key: "loading", label: "Loading", rank: quiz.questions.length + 3 },
+          { key: "result", label: "Resultado", rank: quiz.questions.length + 4 }
         ];
       }
 
       function currentFunnelStep(quiz) {
+        if (state.flowStage === "name") return { key: "name", rank: 2 };
         if (state.flowStage === "quiz") {
-          return funnelSteps(quiz)[Math.min(state.previewStep + 2, quiz.questions.length + 1)];
+          return funnelSteps(quiz)[Math.min(state.previewStep + 3, quiz.questions.length + 2)];
         }
-        if (state.flowStage === "loading") return { key: "loading", rank: quiz.questions.length + 2 };
-        if (state.flowStage === "result") return { key: "result", rank: quiz.questions.length + 3 };
+        if (state.flowStage === "loading") return { key: "loading", rank: quiz.questions.length + 3 };
+        if (state.flowStage === "result") return { key: "result", rank: quiz.questions.length + 4 };
         return { key: "visit", rank: 0 };
       }
 
@@ -902,7 +907,7 @@
 
       function quizFunnelRecords(quiz) {
         const records = state.funnel.filter((item) => item.quizId === quiz.id);
-        const resultRank = quiz.questions.length + 3;
+        const resultRank = quiz.questions.length + 4;
         const completedTracked = records.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
         const missingCompleted = Math.max(0, quizSubmissions(quiz).length - completedTracked);
         return records.concat(Array.from({ length: missingCompleted }).map((_, index) => ({
@@ -1126,11 +1131,12 @@
         return `
           <div class="response-table">
             <div class="response-row head">
-              <span>Data</span><span>Perfil</span><span>Respostas</span>
+              <span>Data</span><span>Nome</span><span>Perfil</span><span>Respostas</span>
             </div>
             ${submissions.map((submission) => `
               <div class="response-row">
                 <span>${new Date(submission.createdAt).toLocaleString("pt-BR")}</span>
+                <span>${escapeHtml(submission.travelerName || "-")}</span>
                 <span>${escapeHtml(profileLabel(quiz, submission.resultProfile))}</span>
                 <span>${submission.answers.map((answer, index) => escapeHtml(quiz.questions[index]?.options[answer]?.text || "-")).join("<br>")}</span>
               </div>
@@ -1250,6 +1256,7 @@
 
       function quizExperience(quiz, preview) {
         if (state.flowStage === "intro") return introView(quiz, preview);
+        if (state.flowStage === "name") return nameView(quiz, preview);
         if (state.flowStage === "loading") return loadingView();
         if (state.flowStage === "result") return resultView(quiz, resultFor(quiz, state.answers), preview);
         return questionView(quiz, Math.min(state.previewStep, quiz.questions.length - 1), preview);
@@ -1261,6 +1268,9 @@
             <div class="intro-center">
               <p class="app-kicker">${escapeHtml(quiz.badge || "Aplicativo inteligente")}</p>
               <h2>${escapeHtml(quiz.title)}</h2>
+              <div class="intro-hero-frame">
+                <img class="intro-hero-image" src="assets/Fotodoquiz.png" alt="Viajante mostrando o aplicativo de organização de viagem">
+              </div>
               <p>${escapeHtml(quiz.subtitle)}</p>
               <button class="diagnostic-btn" data-action="${preview ? "preview-start" : "start-quiz"}">Começar o diagnóstico <span>→</span></button>
               <div class="trust-row" aria-label="Selos de seguranca">
@@ -1268,6 +1278,22 @@
                 <span>🔒 Conexão SSL criptografada</span>
                 <span><b>G</b> Verificado pelo Google</span>
               </div>
+            </div>
+          </section>
+        `;
+      }
+
+      function nameView(quiz, preview) {
+        return `
+          <section class="quiz-page question-page name-page" style="--theme:${escapeAttr(quiz.theme)}">
+            <div class="name-block">
+              <p class="app-kicker">${escapeHtml(quiz.badge || "Aplicativo inteligente")}</p>
+              <h3>Qual o seu nome, viajante?</h3>
+              <label class="traveler-name-field">
+                <span>Seu nome</span>
+                <input type="text" name="name" autocomplete="name" placeholder="Digite seu nome" value="${escapeAttr(state.lead.name)}" data-traveler-name>
+              </label>
+              <button class="diagnostic-btn" data-action="${preview ? "preview-name-next" : "name-next"}">Continuar <span>→</span></button>
             </div>
           </section>
         `;
@@ -1309,11 +1335,12 @@
       function questionView(quiz, step, preview) {
         const question = quiz.questions[step];
         const answeredIndex = state.answers[step];
+        const questionText = personalizedQuestion(question.text, preview);
         return `
           <section class="quiz-page question-page" style="--theme:${escapeAttr(quiz.theme)}">
             ${progressSegments(quiz.questions.length, step)}
             <div class="question-block">
-              <h3>${escapeHtml(question.text)}</h3>
+              <h3>${escapeHtml(questionText)}</h3>
               <div class="answer-stack">
                 ${question.options.map((option, index) => `
                   <button class="answer-btn ${answeredIndex === index ? "selected" : ""}" data-action="${preview ? "preview-answer" : "answer"}" data-answer="${index}">
@@ -1325,6 +1352,17 @@
             </div>
           </section>
         `;
+      }
+
+      function personalizedQuestion(text, preview) {
+        const firstName = String(state.lead.name || "").trim().split(/\s+/)[0];
+        if (preview || !firstName) return text;
+        return `${firstName}, ${lowerFirst(text)}`;
+      }
+
+      function lowerFirst(text) {
+        const value = String(text || "");
+        return value.charAt(0).toLocaleLowerCase("pt-BR") + value.slice(1);
       }
 
       function progressSegments(total, current) {
@@ -1438,6 +1476,20 @@
               }
             }
             if (action === "preview-start" || action === "start-quiz") {
+              state.flowStage = "name";
+              state.previewStep = 0;
+              state.answers = [];
+              state.submittedThisRun = false;
+              render();
+            }
+            if (action === "preview-name-next" || action === "name-next") {
+              const nameInput = document.querySelector("[data-traveler-name]");
+              const name = String(nameInput?.value || "").trim();
+              if (!name) {
+                nameInput?.focus();
+                return;
+              }
+              state.lead = { ...state.lead, name };
               state.flowStage = "quiz";
               state.previewStep = 0;
               state.answers = [];
@@ -1461,6 +1513,7 @@
               state.loadingProgress = 0;
               state.answers = [];
               state.submittedThisRun = false;
+              state.lead = { name: "", email: "", phone: "" };
               render();
             }
             if (action) event.preventDefault();
@@ -1469,6 +1522,17 @@
 
         document.querySelectorAll("[data-field]").forEach((input) => {
           input.addEventListener("change", () => setField(input.dataset.field, input.value));
+        });
+
+        document.querySelectorAll("[data-traveler-name]").forEach((input) => {
+          input.addEventListener("input", () => {
+            state.lead = { ...state.lead, name: input.value };
+          });
+          input.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            document.querySelector("[data-action='name-next'], [data-action='preview-name-next']")?.click();
+          });
         });
 
         document.querySelectorAll("[data-admin-select]").forEach((select) => {
@@ -1524,7 +1588,7 @@
             loadingTimer = null;
             return;
           }
-          state.loadingProgress = Math.min(100, state.loadingProgress + 10);
+          state.loadingProgress = Math.min(100, Math.round(state.loadingProgress + 100 / 6));
           if (state.loadingProgress >= 100) {
             window.clearInterval(loadingTimer);
             loadingTimer = null;
@@ -1536,10 +1600,11 @@
 
       function exportSubmissions(quiz) {
         const rows = quizSubmissions(quiz);
-        const headers = ["data", "perfil", ...quiz.questions.map((_, index) => `pergunta_${index + 1}`)];
+        const headers = ["data", "nome", "perfil", ...quiz.questions.map((_, index) => `pergunta_${index + 1}`)];
         const lines = [headers.join(",")].concat(rows.map((row) => {
           const values = [
             new Date(row.createdAt).toLocaleString("pt-BR"),
+            row.travelerName || "",
             profileLabel(quiz, row.resultProfile),
             ...row.answers.map((answer, index) => quiz.questions[index]?.options[answer]?.text || "")
           ];
