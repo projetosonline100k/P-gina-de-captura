@@ -1152,6 +1152,33 @@ select:focus {
   font-size: 14px;
 }
 
+.funnel-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
+.funnel-summary div {
+  display: grid;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid rgba(144, 164, 255, 0.24);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.funnel-summary span {
+  color: #aab3c2;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.funnel-summary strong {
+  color: #fff;
+  font-size: 24px;
+}
+
 .funnel-chart {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
@@ -1910,6 +1937,10 @@ select:focus {
   .funnel-head {
     display: grid;
     gap: 10px;
+  }
+
+  .funnel-summary {
+    grid-template-columns: 1fr;
   }
 
   .funnel-chart {

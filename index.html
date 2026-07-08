@@ -602,7 +602,8 @@
             rank: index + 3
           })),
           { key: "loading", label: "Loading", rank: quiz.questions.length + 3 },
-          { key: "result", label: "Resultado", rank: quiz.questions.length + 4 }
+          { key: "result", label: "Resultado", rank: quiz.questions.length + 4 },
+          { key: "checkout", label: "Clique checkout", rank: quiz.questions.length + 5 }
         ];
       }
 
@@ -616,10 +617,9 @@
         return { key: "visit", rank: 0 };
       }
 
-      function recordFunnelProgress(quiz) {
+      function recordFunnelStep(quiz, step) {
         if (adminRoute()) return;
         const sessionId = `${visitorSessionId()}:${quiz.id}`;
-        const step = currentFunnelStep(quiz);
         let record = state.funnel.find((item) => item.sessionId === sessionId && item.quizId === quiz.id);
         let changed = false;
         if (!record) {
@@ -646,6 +646,14 @@
         }
       }
 
+      function recordFunnelProgress(quiz) {
+        recordFunnelStep(quiz, currentFunnelStep(quiz));
+      }
+
+      function recordCheckoutClick(quiz) {
+        recordFunnelStep(quiz, { key: "checkout", rank: quiz.questions.length + 5 });
+      }
+
       function copyLink() {
         const link = shareUrl(activeQuiz());
         navigator.clipboard?.writeText(link);
@@ -661,12 +669,24 @@
       function render() {
         const publicQuiz = getPublicQuiz();
         const isPublic = publicQuiz && !adminRoute();
+        const publicScrollKey = isPublic
+          ? `${publicQuiz.id}:${state.flowStage}:${state.flowStage === "quiz" ? state.previewStep : ""}`
+          : "";
+        const shouldScrollTop = isPublic && publicScrollKey !== lastPublicScrollKey;
         if (isPublic) recordFunnelProgress(publicQuiz);
         if (!isPublic && !state.remoteError) loadRemoteData();
         document.getElementById("app").innerHTML = isPublic
           ? publicView(publicQuiz)
           : dashboardView();
         bindEvents(isPublic ? publicQuiz : activeQuiz());
+        if (isPublic) {
+          lastPublicScrollKey = publicScrollKey;
+          if (shouldScrollTop) {
+            window.requestAnimationFrame(() => window.scrollTo({ top: 0, left: 0, behavior: "auto" }));
+          }
+        } else {
+          lastPublicScrollKey = "";
+        }
       }
 
       function dashboardView() {
@@ -1092,6 +1112,12 @@
         }
 
         const total = records.filter((item) => Number(item.maxRank || 0) >= 0).length || 1;
+        const resultRank = quiz.questions.length + 4;
+        const checkoutRank = quiz.questions.length + 5;
+        const resultCount = records.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
+        const checkoutCount = records.filter((item) => Number(item.maxRank || 0) >= checkoutRank).length;
+        const checkoutConversion = Math.round((checkoutCount / total) * 100);
+        const resultToCheckout = resultCount ? Math.round((checkoutCount / resultCount) * 100) : 0;
         return `
           <article class="funnel-panel">
             <div class="funnel-head">
@@ -1100,6 +1126,11 @@
                 <h2>Passagem por etapa</h2>
               </div>
               <strong>${total} visitante(s)</strong>
+            </div>
+            <div class="funnel-summary">
+              <div><span>Cliques no checkout</span><strong>${checkoutCount}</strong></div>
+              <div><span>Conversão total</span><strong>${checkoutConversion}%</strong></div>
+              <div><span>Resultado → checkout</span><strong>${resultToCheckout}%</strong></div>
             </div>
             <div class="funnel-chart">
               ${steps.map((step, index) => {
@@ -1267,6 +1298,7 @@
       }
 
       let loadingTimer = null;
+      let lastPublicScrollKey = "";
 
       function publicView(quiz) {
         return `
@@ -1417,7 +1449,7 @@
               <ul class="benefit-box">
                 ${(result.bullets || []).map((item) => `<li><span>✓</span>${escapeHtml(item)}</li>`).join("")}
               </ul>
-              <a class="diagnostic-btn result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener">
+              <a class="diagnostic-btn result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener" data-action="${preview ? "preview-checkout-click" : "checkout-click"}">
                 ${escapeHtml(quiz.ctaLabel)}
               </a>
               <button class="text-reset" data-action="${preview ? "preview-reset" : "reset-quiz"}">Refazer diagnóstico</button>
@@ -1471,6 +1503,11 @@
             if (action === "add-result") addResult();
             if (action === "remove-result") removeResult(Number(element.dataset.r));
             if (action === "copy-link") copyLink();
+            if (action === "checkout-click" || action === "preview-checkout-click") {
+              const href = element.getAttribute("href");
+              if (action === "checkout-click") recordCheckoutClick(quiz);
+              if (action === "checkout-click" && href) window.open(href, "_blank", "noopener");
+            }
             if (action === "clear-submissions") {
               const quizId = activeQuiz().id;
               state.submissions = state.submissions.filter((item) => item.quizId !== activeQuiz().id);
