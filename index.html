@@ -264,6 +264,17 @@
         };
       }
 
+      function submissionPayloadWithoutName(submission) {
+        return {
+          id: submission.id,
+          quiz_id: submission.quizId,
+          created_at: submission.createdAt,
+          answers: submission.answers,
+          result_profile: submission.resultProfile,
+          result_title: submission.resultTitle
+        };
+      }
+
       function funnelPayload(record) {
         return {
           session_id: record.sessionId,
@@ -311,6 +322,17 @@
           body: submissionPayload(submission)
         }).catch((error) => {
           console.warn("Nao foi possivel salvar resposta no Supabase:", error);
+          if (String(error.message || error).includes("traveler_name")) {
+            supabaseRequest("quiz_submissions", {
+              method: "POST",
+              prefer: "resolution=merge-duplicates",
+              body: submissionPayloadWithoutName(submission)
+            }).catch((fallbackError) => {
+              console.warn("Nao foi possivel salvar resposta sem nome no Supabase:", fallbackError);
+            });
+            state.remoteError = "Respostas salvas sem nome. Falta criar a coluna traveler_name no Supabase.";
+            return;
+          }
           state.remoteError = "Resposta salva localmente. Supabase ainda não conectado.";
         });
       }
