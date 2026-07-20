@@ -154,6 +154,8 @@
         activeId: null,
         adminTab: "home",
         adminStage: 0,
+        adminResultIndex: 0,
+        selectedComponentId: null,
         flowStage: "intro",
         previewStep: 0,
         loadingProgress: 0,
@@ -381,6 +383,7 @@
         url.search = "";
         url.hash = "";
         url.searchParams.set("quiz", slugFor(quiz));
+        url.searchParams.set("q", encodeQuiz(normalizeQuiz(quiz)));
         return url.toString();
       }
 
@@ -389,12 +392,17 @@
         url.search = "";
         url.hash = "";
         url.searchParams.set("preview", "1");
+        url.searchParams.set("quiz", slugFor(activeQuiz()));
         return url.toString();
       }
 
       function getPublicQuiz() {
         const params = new URLSearchParams(window.location.search);
-        if (params.get("preview") === "1") return normalizeQuiz(activeQuiz());
+        if (params.get("preview") === "1") {
+          const previewSlug = params.get("quiz");
+          const previewQuiz = state.quizzes.find((quiz) => slugFor(quiz) === previewSlug) || activeQuiz();
+          return normalizeQuiz(previewQuiz);
+        }
         const encoded = params.get("q");
         if (!encoded) {
           const slug = params.get("quiz");
@@ -418,7 +426,77 @@
         });
         if (!clean.questions.length) clean.questions = clone(defaultQuiz.questions);
         if (!clean.results.length) clean.results = clone(defaultQuiz.results);
+        clean.stageComponents = clean.stageComponents || {};
         return clean;
+      }
+
+      function stageKey(quiz, stage = state.adminStage) {
+        if (stage === 0) return "intro";
+        if (stage > 0 && stage <= quiz.questions.length) return `question:${stage - 1}`;
+        if (stage === quiz.questions.length + 1) return "loading";
+        if (stage === quiz.questions.length + 2) return "result";
+        return "publication";
+      }
+
+      function addStageComponent(type) {
+        const quiz = activeQuiz();
+        quiz.stageComponents ||= {};
+        const key = stageKey(quiz);
+        if (key === "publication") return;
+        const defaults = {
+          "Vídeo": { content: "", label: "Cole aqui o link ou código de incorporação da Vturb" },
+          "Imagem": { content: "", label: "Cole a URL da imagem" },
+          "Botão": { content: "Quero continuar", url: "#" },
+          "Espaço": { content: "48" },
+          "Script": { content: "" }
+        };
+        const component = { id: uid("component"), type, position: 4, aspectRatio: "16:9", ...(defaults[type] || { content: `Novo componente de ${type}` }) };
+        (quiz.stageComponents[key] ||= []).push(component);
+        state.selectedComponentId = component.id;
+        saveQuizzes();
+        render();
+      }
+
+      function removeStageComponent(id) {
+        const quiz = activeQuiz();
+        const key = stageKey(quiz);
+        quiz.stageComponents[key] = (quiz.stageComponents?.[key] || []).filter((item) => item.id !== id);
+        state.selectedComponentId = null;
+        saveQuizzes();
+        render();
+      }
+
+      function moveStageComponent(id, direction) {
+        const quiz = activeQuiz();
+        const components = quiz.stageComponents?.[stageKey(quiz)] || [];
+        const from = components.findIndex((item) => item.id === id);
+        if (from < 0) return;
+        const component = components[from];
+        component.position = Math.max(0, Math.min(4, Number(component.position ?? 4) + direction));
+        saveQuizzes();
+        render();
+      }
+
+      function reorderStageComponent(draggedId, targetId) {
+        if (!draggedId || !targetId || draggedId === targetId) return;
+        const quiz = activeQuiz();
+        const components = quiz.stageComponents?.[stageKey(quiz)] || [];
+        const from = components.findIndex((item) => item.id === draggedId);
+        const to = components.findIndex((item) => item.id === targetId);
+        if (from < 0 || to < 0) return;
+        const [component] = components.splice(from, 1);
+        components.splice(to, 0, component);
+        saveQuizzes();
+        render();
+      }
+
+      function setStageComponentPosition(id, position) {
+        const quiz = activeQuiz();
+        const component = (quiz.stageComponents?.[stageKey(quiz)] || []).find((item) => item.id === id);
+        if (!component) return;
+        component.position = Math.max(0, Math.min(4, Number(position)));
+        saveQuizzes();
+        render();
       }
 
       function activeQuiz() {
@@ -725,7 +803,104 @@
           }
         } else {
           lastPublicScrollKey = "";
+          fitAdminCanvas();
         }
+      }
+
+      function fitAdminCanvas() {
+        window.requestAnimationFrame(() => {
+          const frame = document.querySelector(".selected-outline");
+          const page = frame?.querySelector(".canvas-live-page");
+          if (!frame || !page) return;
+          const availableWidth = Math.max(320, frame.clientWidth - 4);
+          page.style.zoom = String(Math.min(1, availableWidth / 1040));
+        });
+      }
+
+      function refreshAdminCanvas() {
+        if (adminRoute() && state.adminTab === "builder") {
+          const frame = document.querySelector(".selected-outline");
+          if (frame) {
+            frame.innerHTML = adminCanvasPreview(activeQuiz());
+            bindRefreshedAdminPreview(frame);
+            bindRefreshedCanvasEditing(frame);
+            fitAdminCanvas();
+          }
+        }
+      }
+
+      function bindRefreshedAdminPreview(frame) {
+        frame.querySelectorAll("[data-action]").forEach((element) => {
+          element.addEventListener("click", (event) => {
+            const action = element.dataset.action;
+            if (action === "preview-start") state.adminStage = Math.min(1, activeQuiz().questions.length);
+            if (action === "preview-answer") state.adminStage = Math.min(state.adminStage + 1, activeQuiz().questions.length + 1);
+            if (action === "preview-reset") state.adminStage = 0;
+            if (action === "preview-checkout-click") window.open(element.href, "_blank", "noopener");
+            if (action === "select-custom-component") {
+              if (event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, input, textarea, [contenteditable='true']")) return;
+              state.selectedComponentId = element.dataset.componentId;
+            }
+            if (action === "remove-stage-component") removeStageComponent(element.dataset.componentId);
+            if (action === "move-custom-up") moveStageComponent(element.dataset.componentId, -1);
+            if (action === "move-custom-down") moveStageComponent(element.dataset.componentId, 1);
+            event.preventDefault();
+            if (!["remove-stage-component", "move-custom-up", "move-custom-down"].includes(action)) render();
+          });
+        });
+      }
+
+      function bindRefreshedCanvasEditing(root) {
+        root.querySelectorAll("[data-inline-component]").forEach((input) => {
+          input.addEventListener("input", () => {
+            const components = activeQuiz().stageComponents?.[stageKey(activeQuiz())] || [];
+            const component = components.find((item) => item.id === input.dataset.inlineComponent);
+            if (!component) return;
+            component[input.dataset.componentKey] = input.matches("textarea, input, select") ? input.value : input.textContent;
+            saveQuizzes();
+          });
+          if (input.matches("textarea, input, select")) input.addEventListener("change", refreshAdminCanvas);
+          input.addEventListener("click", (event) => event.stopPropagation());
+        });
+        root.querySelectorAll("[data-custom-draggable]").forEach((component) => {
+          component.addEventListener("dragstart", (event) => {
+            if (event.target.closest("textarea, input, [contenteditable='true']")) return event.preventDefault();
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/custom-component-id", component.dataset.customDraggable);
+            component.classList.add("is-dragging-component");
+          });
+          component.addEventListener("dragend", () => component.classList.remove("is-dragging-component"));
+          component.addEventListener("dragover", (event) => {
+            if (!event.dataTransfer.types.includes("text/custom-component-id")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            component.classList.add("component-drop-target");
+          });
+          component.addEventListener("dragleave", () => component.classList.remove("component-drop-target"));
+          component.addEventListener("drop", (event) => {
+            const draggedId = event.dataTransfer.getData("text/custom-component-id");
+            if (!draggedId) return;
+            event.preventDefault();
+            event.stopPropagation();
+            reorderStageComponent(draggedId, component.dataset.customDraggable);
+          });
+        });
+        root.querySelectorAll("[data-component-position]").forEach((zone) => {
+          zone.addEventListener("dragover", (event) => {
+            if (!event.dataTransfer.types.includes("text/custom-component-id")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            zone.classList.add("position-drop-active");
+          });
+          zone.addEventListener("dragleave", () => zone.classList.remove("position-drop-active"));
+          zone.addEventListener("drop", (event) => {
+            const id = event.dataTransfer.getData("text/custom-component-id");
+            if (!id) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setStageComponentPosition(id, zone.dataset.componentPosition);
+          });
+        });
       }
 
       function dashboardView() {
@@ -782,7 +957,7 @@
                 <button class="back-link">‹ voltar</button>
                 <div class="component-list">
                   ${componentNames.map(([iconValue, name]) => `
-                    <button class="component-pill" data-action="component-pick" data-component="${escapeAttr(name)}"><span>${iconValue}</span>${name}</button>
+                    <button class="component-pill" draggable="true" data-action="component-pick" data-component="${escapeAttr(name)}"><span>${iconValue}</span>${name}</button>
                   `).join("")}
                 </div>
               </aside>
@@ -826,6 +1001,7 @@
 
                   <div class="settings-group">
                     ${adminSettingsPanel(quiz, activeStage, link)}
+                    ${stageComponentsEditor(quiz, activeStage)}
                   </div>
                 </form>
               </aside>
@@ -878,7 +1054,7 @@
         const stage = Math.min(state.adminStage, quiz.questions.length + 3);
         if (stage > 0 && stage <= quiz.questions.length) {
           return `
-            <div class="canvas-live-page">
+            <div class="canvas-live-page public-shell">
               ${questionView(quiz, stage - 1, true)}
             </div>
           `;
@@ -886,16 +1062,16 @@
 
         if (stage === quiz.questions.length + 1) {
           return `
-            <div class="canvas-live-page">
-              ${loadingView()}
+            <div class="canvas-live-page public-shell">
+              ${loadingView(quiz, true)}
             </div>
           `;
         }
 
         if (stage === quiz.questions.length + 2) {
-          const result = quiz.results[0] || defaultQuiz.results[0];
+          const result = quiz.results[Math.min(state.adminResultIndex, quiz.results.length - 1)] || defaultQuiz.results[0];
           return `
-            <div class="canvas-live-page">
+            <div class="canvas-live-page public-shell">
               ${resultView(quiz, result, true)}
             </div>
           `;
@@ -903,14 +1079,14 @@
 
         if (stage === quiz.questions.length + 3) {
           return `
-            <div class="canvas-live-page">
+            <div class="canvas-live-page public-shell">
               ${introView(quiz, true)}
             </div>
           `;
         }
 
         return `
-          <div class="canvas-live-page">
+          <div class="canvas-live-page public-shell">
             ${introView(quiz, true)}
           </div>
         `;
@@ -980,6 +1156,63 @@
           </div>
           <a class="primary-btn full" href="${escapeAttr(link)}" target="_blank" rel="noopener">Abrir link do usuário</a>
         `;
+      }
+
+      function stageComponentsEditor(quiz, stage) {
+        const components = quiz.stageComponents?.[stageKey(quiz, stage)] || [];
+        if (!components.length) return `<p class="settings-note component-help">Clique ou arraste um componente para a página.</p>`;
+        return `
+          <div class="added-components">
+            <h3>Componentes adicionados</h3>
+            ${components.map((component) => `
+              <article class="editor-card ${state.selectedComponentId === component.id ? "selected-component-editor" : ""}">
+                <div class="card-head">
+                  <strong>${escapeHtml(component.type)}</strong>
+                  <button type="button" class="text-btn" data-action="remove-stage-component" data-component-id="${component.id}">Remover</button>
+                </div>
+                <label class="field">
+                  <span>${component.type === "Vídeo" ? "Link ou código embed da Vturb" : component.type === "Imagem" ? "URL da imagem" : "Conteúdo"}</span>
+                  <textarea rows="5" placeholder="${escapeAttr(component.label || "Digite o conteúdo")}" data-stage-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "")}</textarea>
+                </label>
+                ${component.type === "Botão" ? `<label class="field"><span>Link do botão</span><input value="${escapeAttr(component.url || "#")}" data-stage-component="${component.id}" data-component-key="url"></label>` : ""}
+                ${component.type === "Vídeo" ? `<label class="field"><span>Formato</span><select data-stage-component="${component.id}" data-component-key="aspectRatio"><option value="16:9" ${component.aspectRatio !== "9:16" ? "selected" : ""}>Horizontal 16:9</option><option value="9:16" ${component.aspectRatio === "9:16" ? "selected" : ""}>Reels 9:16</option></select></label>` : ""}
+              </article>
+            `).join("")}
+          </div>
+        `;
+      }
+
+      function stageComponentsView(quiz, key, preview, position = 4) {
+        const components = (quiz.stageComponents?.[key] || []).filter((component) => Number(component.position ?? 4) === position);
+        if (!components.length && !preview) return "";
+        const dropData = preview ? ` data-component-position="${position}"` : "";
+        return `<div class="custom-components ${components.length ? "" : "empty-component-position"}"${dropData}>${components.map((component) => componentView(component, preview)).join("")}</div>`;
+      }
+
+      function componentView(component, preview) {
+        const selected = preview && state.selectedComponentId === component.id ? " selected-custom-component" : "";
+        const selectAttr = preview ? ` data-action="select-custom-component" data-component-id="${component.id}"` : "";
+        const dragAttr = preview ? ` draggable="true" data-custom-draggable="${component.id}"` : "";
+        const toolbar = preview && state.selectedComponentId === component.id ? `
+          <div class="canvas-component-toolbar" contenteditable="false">
+            <span class="drag-handle" title="Arraste para mover">⠿</span>
+            <button type="button" data-action="move-custom-up" data-component-id="${component.id}" title="Mover para cima">↑</button>
+            <button type="button" data-action="move-custom-down" data-component-id="${component.id}" title="Mover para baixo">↓</button>
+            <button type="button" class="delete-canvas-component" data-action="remove-stage-component" data-component-id="${component.id}" title="Excluir">×</button>
+          </div>` : "";
+        if (component.type === "Vídeo") {
+          const value = String(component.content || "").trim();
+          let player = `<div class="video-placeholder">Cole o link ou código da Vturb nas configurações</div>`;
+          if (/^https?:\/\//i.test(value)) player = `<iframe src="${escapeAttr(value)}" title="Vídeo" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+          else if (value) player = `<iframe srcdoc="${escapeAttr(value)}" title="Vídeo" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
+          const inlineEditor = preview && state.selectedComponentId === component.id ? `<div class="inline-video-editor"><label>Link ou código da Vturb</label><textarea data-inline-component="${component.id}" data-component-key="content" placeholder="Cole aqui o link ou embed da Vturb">${escapeHtml(value)}</textarea><div class="inline-video-options"><label>Formato<select data-inline-component="${component.id}" data-component-key="aspectRatio"><option value="16:9" ${component.aspectRatio !== "9:16" ? "selected" : ""}>Horizontal 16:9</option><option value="9:16" ${component.aspectRatio === "9:16" ? "selected" : ""}>Reels 9:16</option></select></label><label>Posição<select data-inline-component="${component.id}" data-component-key="position">${["Topo", "Após o título", "Após o diagnóstico", "Após o texto", "Antes do botão"].map((label, index) => `<option value="${index}" ${Number(component.position ?? 4) === index ? "selected" : ""}>${label}</option>`).join("")}</select></label></div></div>` : "";
+          const ratioClass = component.aspectRatio === "9:16" ? " video-reels" : "";
+          return `<div class="custom-component video-component${ratioClass}${selected}"${selectAttr}${dragAttr}>${toolbar}${player}${inlineEditor}</div>`;
+        }
+        if (component.type === "Imagem") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}>${toolbar}${component.content ? `<img class="custom-image" src="${escapeAttr(component.content)}" alt="">` : `<div class="component-placeholder">Imagem</div>`}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.content || "")}" placeholder="URL da imagem" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
+        if (component.type === "Botão") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}>${toolbar}<a class="diagnostic-btn custom-button" href="${escapeAttr(component.url || "#")}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Botão")}</a>${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.url || "")}" placeholder="Link do botão" data-inline-component="${component.id}" data-component-key="url"></div>` : ""}</div>`;
+        if (component.type === "Espaço") return `<div class="custom-component spacer-component${selected}" style="height:${Math.max(8, Number(component.content) || 48)}px"${selectAttr}${dragAttr}>${toolbar}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input type="number" min="8" value="${escapeAttr(component.content || "48")}" aria-label="Altura do espaço" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
+        return `<div class="custom-component generic-component${selected}"${selectAttr}${dragAttr}>${toolbar}<strong>${escapeHtml(component.type)}</strong><p contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Clique para editar")}</p></div>`;
       }
 
       function quizSubmissions(quiz) {
@@ -1350,7 +1583,7 @@
       function quizExperience(quiz, preview) {
         if (state.flowStage === "intro") return introView(quiz, preview);
         if (state.flowStage === "name") return nameView(quiz, preview);
-        if (state.flowStage === "loading") return loadingView();
+        if (state.flowStage === "loading") return loadingView(quiz, preview);
         if (state.flowStage === "result") return resultView(quiz, resultFor(quiz, state.answers), preview);
         return questionView(quiz, Math.min(state.previewStep, quiz.questions.length - 1), preview);
       }
@@ -1359,13 +1592,18 @@
         return `
           <section class="quiz-page intro-page" style="--theme:${escapeAttr(quiz.theme)}">
             <div class="intro-center">
+              ${stageComponentsView(quiz, "intro", preview, 0)}
               <p class="app-kicker">${escapeHtml(quiz.badge || "Aplicativo inteligente")}</p>
               <h2>${escapeHtml(quiz.title)}</h2>
+              ${stageComponentsView(quiz, "intro", preview, 1)}
               <div class="intro-hero-frame">
                 <img class="intro-hero-image" src="assets/Fotodoquiz.png" alt="Viajante mostrando o aplicativo de organização de viagem">
               </div>
+              ${stageComponentsView(quiz, "intro", preview, 2)}
               <p>${escapeHtml(quiz.subtitle)}</p>
+              ${stageComponentsView(quiz, "intro", preview, 3)}
               <button class="diagnostic-btn" data-action="${preview ? "preview-start" : "start-quiz"}">Começar o diagnóstico <span>→</span></button>
+              ${stageComponentsView(quiz, "intro", preview, 4)}
               <div class="trust-row" aria-label="Selos de seguranca">
                 <span>🛡 Site seguro</span>
                 <span>🔒 Conexão SSL criptografada</span>
@@ -1392,19 +1630,23 @@
         `;
       }
 
-      function loadingView() {
+      function loadingView(quiz, preview) {
         return `
           <section class="quiz-page loading-page">
             <div class="loading-wrap">
+              ${stageComponentsView(quiz, "loading", preview, 0)}
               <p class="loading-kicker">Preparando seu diagnóstico</p>
               <h2>Perfeito! Estamos calculando seu diagnóstico de viagem...</h2>
+              ${stageComponentsView(quiz, "loading", preview, 1)}
               <div class="loading-bar"><span style="width:${state.loadingProgress}%"></span></div>
               <strong class="loading-number">${state.loadingProgress}%</strong>
+              ${stageComponentsView(quiz, "loading", preview, 2)}
               <p class="social-kicker">Enquanto isso, veja quem já organizou a viagem</p>
               <div class="social-stack">
                 ${socialCard("Jaci", "09:42", "Esse aplicativo me ajudou bastante na viagem que fiz com meu marido, o controle que ele me deu do início ao fim de como se preparar para viagem sem se preocupar com nada, foi tudo maravilhoso")}
                 ${socialCard("Davi", "11:18", "Cara, queria te agradecer por ter criado o aplicativo de viagem, estava há 2 anos sem ver a minha mãe, porque achava que ia gastar muito dinheiro, mas o aplicativo me mostrou que não era nenhum bicho de 7 cabeças, consegui fazer a viagem, levei minha esposa junto, e matamos a saudade. Agora já estou planejando a minha próxima viagem hehe")}
               </div>
+              ${stageComponentsView(quiz, "loading", preview, 4)}
             </div>
           </section>
         `;
@@ -1433,7 +1675,10 @@
           <section class="quiz-page question-page" style="--theme:${escapeAttr(quiz.theme)}">
             ${progressSegments(quiz.questions.length, step)}
             <div class="question-block">
+              ${stageComponentsView(quiz, `question:${step}`, preview, 0)}
               <h3>${escapeHtml(questionText)}</h3>
+              ${stageComponentsView(quiz, `question:${step}`, preview, 1)}
+              ${stageComponentsView(quiz, `question:${step}`, preview, 2)}
               <div class="answer-stack">
                 ${question.options.map((option, index) => `
                   <button class="answer-btn ${answeredIndex === index ? "selected" : ""}" data-action="${preview ? "preview-answer" : "answer"}" data-answer="${index}">
@@ -1442,6 +1687,7 @@
                   </button>
                 `).join("")}
               </div>
+              ${stageComponentsView(quiz, `question:${step}`, preview, 4)}
             </div>
           </section>
         `;
@@ -1473,21 +1719,26 @@
         return `
           <section class="quiz-page" style="--theme:${escapeAttr(quiz.theme)}">
             <div class="result-page">
+              ${stageComponentsView(quiz, "result", preview, 0)}
               <div class="plane">✈️</div>
               <p class="result-kicker">Seu perfil</p>
               <h2>${escapeHtml(firstPart)} <span>${escapeHtml(lastWord)}</span></h2>
+              ${stageComponentsView(quiz, "result", preview, 1)}
               <div class="diagnosis-box">
                 ${escapeHtml(result.text).split(". ").filter(Boolean).map((part) => `<p>${part.replace(/\.$/, "")}.</p>`).join("")}
               </div>
+              ${stageComponentsView(quiz, "result", preview, 2)}
               <h3>Mas você não precisa de mais dinheiro.<br>Precisa de organização.</h3>
               <div class="result-copy">
                 <p>Quem viaja com frequência não é quem ganha mais, é quem <strong>organiza melhor.</strong></p>
                 <p>Quando você sabe exatamente quanto precisa guardar, por quanto tempo, e pra onde esse dinheiro está indo, a viagem deixa de ser um sonho distante e vira uma meta com data marcada.</p>
                 <p>E por isso que criamos o <strong class="blue">Aplicativo Inteligente de Viagem</strong>, porque ele faz:</p>
               </div>
+              ${stageComponentsView(quiz, "result", preview, 3)}
               <ul class="benefit-box">
                 ${(result.bullets || []).map((item) => `<li><span>✓</span>${escapeHtml(item)}</li>`).join("")}
               </ul>
+              ${stageComponentsView(quiz, "result", preview, 4)}
               <a class="diagnostic-btn result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener" data-action="${preview ? "preview-checkout-click" : "checkout-click"}">
                 ${escapeHtml(quiz.ctaLabel)}
               </a>
@@ -1541,6 +1792,14 @@
             if (action === "remove-option") removeOption(Number(element.dataset.q), Number(element.dataset.o));
             if (action === "add-result") addResult();
             if (action === "remove-result") removeResult(Number(element.dataset.r));
+            if (action === "remove-stage-component") removeStageComponent(element.dataset.componentId);
+            if (action === "move-custom-up") moveStageComponent(element.dataset.componentId, -1);
+            if (action === "move-custom-down") moveStageComponent(element.dataset.componentId, 1);
+            if (action === "select-custom-component") {
+              if (event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, input, textarea, [contenteditable='true']")) return;
+              state.selectedComponentId = element.dataset.componentId;
+              render();
+            }
             if (action === "copy-link") copyLink();
             if (action === "checkout-click" || action === "preview-checkout-click") {
               const href = element.getAttribute("href");
@@ -1563,17 +1822,12 @@
               window.setTimeout(() => { element.textContent = "Salvar"; }, 1100);
             }
             if (action === "component-pick") {
-              const name = element.dataset.component;
-              if (name === "Opções") addQuestion();
-              else if (name === "Loading" || name === "Depoimentos") {
-                state.adminStage = activeQuiz().questions.length + 1;
-                render();
-              } else if (name === "Botão" || name === "Texto" || name === "Alerta") {
-                state.adminStage = 0;
-                render();
-              }
+              addStageComponent(element.dataset.component);
             }
-            if (action === "preview-start" || action === "start-quiz") {
+            if (action === "preview-start" && !isPublicPage) {
+              state.adminStage = Math.min(1, quiz.questions.length);
+              render();
+            } else if (action === "preview-start" || action === "start-quiz") {
               setCurrentRunIgnored(quiz, false);
               state.flowStage = "name";
               state.previewStep = 0;
@@ -1581,7 +1835,10 @@
               state.submittedThisRun = false;
               render();
             }
-            if (action === "preview-name-next" || action === "name-next") {
+            if (action === "preview-name-next" && !isPublicPage) {
+              state.adminStage = Math.min(1, quiz.questions.length);
+              render();
+            } else if (action === "preview-name-next" || action === "name-next") {
               const nameInput = document.querySelector("[data-traveler-name]");
               const name = String(nameInput?.value || "").trim();
               if (!name) {
@@ -1601,7 +1858,10 @@
               state.submittedThisRun = false;
               render();
             }
-            if (action === "preview-answer" || action === "answer") {
+            if (action === "preview-answer" && !isPublicPage) {
+              state.adminStage = Math.min(state.adminStage + 1, quiz.questions.length + 1);
+              render();
+            } else if (action === "preview-answer" || action === "answer") {
               state.answers[state.previewStep] = Number(element.dataset.answer);
               if (state.previewStep >= quiz.questions.length - 1) {
                 if (action === "answer") recordSubmission(quiz);
@@ -1612,7 +1872,10 @@
               }
               render();
             }
-            if (action === "preview-reset" || action === "reset-quiz") {
+            if (action === "preview-reset" && !isPublicPage) {
+              state.adminStage = 0;
+              render();
+            } else if (action === "preview-reset" || action === "reset-quiz") {
               state.flowStage = "intro";
               state.previewStep = 0;
               state.loadingProgress = 0;
@@ -1627,7 +1890,13 @@
         });
 
         document.querySelectorAll("[data-field]").forEach((input) => {
-          input.addEventListener("change", () => setField(input.dataset.field, input.value));
+          input.addEventListener("input", () => {
+            const target = activeQuiz();
+            target[input.dataset.field] = input.value;
+            if (input.dataset.field === "slug") target.slug = slugify(input.value);
+            saveQuizzes();
+            refreshAdminCanvas();
+          });
         });
 
         document.querySelectorAll("[data-traveler-name]").forEach((input) => {
@@ -1653,30 +1922,130 @@
         });
 
         document.querySelectorAll("[data-question]").forEach((input) => {
-          input.addEventListener("change", () => {
+          input.addEventListener("input", () => {
             activeQuiz().questions[Number(input.dataset.question)][input.dataset.qkey] = input.value;
             saveQuizzes();
-            render();
+            refreshAdminCanvas();
           });
         });
 
         document.querySelectorAll("[data-option]").forEach((input) => {
-          input.addEventListener("change", () => {
+          input.addEventListener("input", () => {
             const [questionIndex, optionIndex] = input.dataset.option.split(":").map(Number);
-            updateOption(questionIndex, optionIndex, input.dataset.okey, input.value);
+            const option = activeQuiz().questions[questionIndex].options[optionIndex];
+            option[input.dataset.okey] = input.dataset.okey === "weight" ? Number(input.value) : input.value;
+            saveQuizzes();
+            refreshAdminCanvas();
           });
         });
 
         document.querySelectorAll("[data-result]").forEach((input) => {
-          input.addEventListener("change", () => {
+          input.addEventListener("focus", () => {
+            state.adminResultIndex = Number(input.dataset.result);
+            refreshAdminCanvas();
+          });
+          input.addEventListener("input", () => {
             const result = activeQuiz().results[Number(input.dataset.result)];
             result[input.dataset.rkey] = input.dataset.rkey === "bullets"
               ? input.value.split("\n").filter(Boolean)
               : input.value;
             saveQuizzes();
-            render();
+            refreshAdminCanvas();
           });
         });
+
+        document.querySelectorAll("[data-stage-component]").forEach((input) => {
+          input.addEventListener("input", () => {
+            const components = activeQuiz().stageComponents?.[stageKey(activeQuiz())] || [];
+            const component = components.find((item) => item.id === input.dataset.stageComponent);
+            if (!component) return;
+            component[input.dataset.componentKey] = input.value;
+            saveQuizzes();
+            refreshAdminCanvas();
+          });
+        });
+
+        document.querySelectorAll("[data-inline-component]").forEach((input) => {
+          input.addEventListener("input", () => {
+            const components = activeQuiz().stageComponents?.[stageKey(activeQuiz())] || [];
+            const component = components.find((item) => item.id === input.dataset.inlineComponent);
+            if (!component) return;
+            component[input.dataset.componentKey] = input.matches("textarea, input, select") ? input.value : input.textContent;
+            saveQuizzes();
+          });
+          if (input.matches("textarea, input, select")) input.addEventListener("change", refreshAdminCanvas);
+          input.addEventListener("click", (event) => event.stopPropagation());
+        });
+
+        document.querySelectorAll("[data-custom-draggable]").forEach((component) => {
+          component.addEventListener("dragstart", (event) => {
+            if (event.target.closest("textarea, input, [contenteditable='true']")) {
+              event.preventDefault();
+              return;
+            }
+            event.stopPropagation();
+            event.dataTransfer.effectAllowed = "move";
+            event.dataTransfer.setData("text/custom-component-id", component.dataset.customDraggable);
+            component.classList.add("is-dragging-component");
+          });
+          component.addEventListener("dragend", () => component.classList.remove("is-dragging-component"));
+          component.addEventListener("dragover", (event) => {
+            if (!event.dataTransfer.types.includes("text/custom-component-id")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            component.classList.add("component-drop-target");
+          });
+          component.addEventListener("dragleave", () => component.classList.remove("component-drop-target"));
+          component.addEventListener("drop", (event) => {
+            const draggedId = event.dataTransfer.getData("text/custom-component-id");
+            if (!draggedId) return;
+            event.preventDefault();
+            event.stopPropagation();
+            component.classList.remove("component-drop-target");
+            reorderStageComponent(draggedId, component.dataset.customDraggable);
+          });
+        });
+
+        document.querySelectorAll("[data-component-position]").forEach((zone) => {
+          zone.addEventListener("dragover", (event) => {
+            if (!event.dataTransfer.types.includes("text/custom-component-id")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            zone.classList.add("position-drop-active");
+          });
+          zone.addEventListener("dragleave", () => zone.classList.remove("position-drop-active"));
+          zone.addEventListener("drop", (event) => {
+            const id = event.dataTransfer.getData("text/custom-component-id");
+            if (!id) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setStageComponentPosition(id, zone.dataset.componentPosition);
+          });
+        });
+
+        document.querySelectorAll(".component-pill[draggable='true']").forEach((item) => {
+          item.addEventListener("dragstart", (event) => {
+            event.dataTransfer.effectAllowed = "copy";
+            event.dataTransfer.setData("text/quiz-component", item.dataset.component);
+            document.querySelector(".selected-outline")?.classList.add("drop-ready");
+          });
+          item.addEventListener("dragend", () => document.querySelector(".selected-outline")?.classList.remove("drop-ready", "drag-over"));
+        });
+
+        const canvasDropZone = document.querySelector(".selected-outline");
+        if (canvasDropZone) {
+          canvasDropZone.addEventListener("dragover", (event) => {
+            event.preventDefault();
+            canvasDropZone.classList.add("drag-over");
+          });
+          canvasDropZone.addEventListener("dragleave", () => canvasDropZone.classList.remove("drag-over"));
+          canvasDropZone.addEventListener("drop", (event) => {
+            event.preventDefault();
+            const type = event.dataTransfer.getData("text/quiz-component");
+            canvasDropZone.classList.remove("drop-ready", "drag-over");
+            if (type) addStageComponent(type);
+          });
+        }
 
         const leadForm = document.querySelector("[data-lead-form]");
         if (leadForm) {
@@ -1743,6 +2112,7 @@
       }
 
       render();
+      window.addEventListener("resize", fitAdminCanvas);
     </script>
   </body>
 </html>
