@@ -526,6 +526,7 @@
           "Imagem": { content: "", label: "Cole a URL da imagem" },
           "Botão": { content: "Quero continuar", url: "#" },
           "Espaço": { content: "48" },
+          "Timer": { content: "10", action: "show", targetIds: [], showCountdown: true },
           "Script": { content: "" }
         };
         const component = { id: uid("component"), type, position: 4, aspectRatio: "16:9", ...(defaults[type] || { content: `Novo componente de ${type}` }) };
@@ -1255,14 +1256,47 @@
                   <strong>${escapeHtml(component.type)}</strong>
                   <button type="button" class="text-btn" data-action="remove-stage-component" data-component-id="${component.id}">Remover</button>
                 </div>
-                <label class="field">
+                ${component.type === "Timer" ? timerComponentEditor(quiz, stage, component) : `<label class="field">
                   <span>${component.type === "Vídeo" ? "Link ou código embed da Vturb" : component.type === "Imagem" ? "URL da imagem" : "Conteúdo"}</span>
                   <textarea rows="5" placeholder="${escapeAttr(component.label || "Digite o conteúdo")}" data-stage-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "")}</textarea>
-                </label>
+                </label>`}
                 ${component.type === "Botão" ? `<label class="field"><span>Link do botão</span><input value="${escapeAttr(component.url || "#")}" data-stage-component="${component.id}" data-component-key="url"></label>` : ""}
                 ${component.type === "Vídeo" ? `<label class="field"><span>Formato</span><select data-stage-component="${component.id}" data-component-key="aspectRatio"><option value="16:9" ${component.aspectRatio !== "9:16" ? "selected" : ""}>Horizontal 16:9</option><option value="9:16" ${component.aspectRatio === "9:16" ? "selected" : ""}>Reels 9:16</option></select></label>` : ""}
               </article>
             `).join("")}
+          </div>
+        `;
+      }
+
+      function timerTargetOptions(quiz, stage) {
+        const key = stageKey(quiz, stage);
+        const common = {
+          intro: [["intro-title", "Título"], ["intro-image", "Imagem principal"], ["intro-subtitle", "Subtítulo"], ["intro-cta", "Botão de começar"], ["intro-trust", "Selos de segurança"]],
+          loading: [["loading-title", "Título do carregamento"], ["loading-progress", "Barra de progresso"], ["loading-social", "Depoimentos"]],
+          result: [["result-title", "Título do resultado"], ["result-diagnosis", "Diagnóstico"], ["result-copy", "Texto de venda"], ["result-benefits", "Benefícios"], ["result-cta", "Botão principal"]]
+        };
+        const base = key.startsWith("question:")
+          ? [["question-title", "Pergunta"], ["question-options", "Opções de resposta"]]
+          : (common[key] || []);
+        const custom = (quiz.stageComponents?.[key] || [])
+          .filter((item) => item.type !== "Timer")
+          .map((item, index) => [`component:${item.id}`, `${item.type} ${index + 1}`]);
+        return [...base, ...custom];
+      }
+
+      function timerComponentEditor(quiz, stage, component) {
+        const selected = component.targetIds || [];
+        return `
+          <div class="timer-editor">
+            <div class="field-row">
+              <label class="field"><span>Atraso em segundos</span><input type="number" min="0" value="${Math.max(0, Number(component.content) || 0)}" data-stage-component="${component.id}" data-component-key="content"></label>
+              <label class="field"><span>Depois do tempo</span><select data-stage-component="${component.id}" data-component-key="action"><option value="show" ${component.action !== "hide" ? "selected" : ""}>Mostrar selecionados</option><option value="hide" ${component.action === "hide" ? "selected" : ""}>Ocultar selecionados</option></select></label>
+            </div>
+            <label class="check-row"><input type="checkbox" ${component.showCountdown !== false ? "checked" : ""} data-timer-countdown="${component.id}"> Exibir contagem regressiva</label>
+            <strong class="timer-target-title">Elementos afetados</strong>
+            <div class="timer-target-list">
+              ${timerTargetOptions(quiz, stage).map(([id, label]) => `<label class="check-row"><input type="checkbox" value="${escapeAttr(id)}" ${selected.includes(id) ? "checked" : ""} data-timer-target="${component.id}"> ${escapeHtml(label)}</label>`).join("") || `<p class="settings-note">Adicione outro componente nesta etapa para controlá-lo.</p>`}
+            </div>
           </div>
         `;
       }
@@ -1285,6 +1319,11 @@
             <button type="button" data-action="move-custom-down" data-component-id="${component.id}" title="Mover para baixo">↓</button>
             <button type="button" class="delete-canvas-component" data-action="remove-stage-component" data-component-id="${component.id}" title="Excluir">×</button>
           </div>` : "";
+        const targetAttr = ` data-delay-target="component:${component.id}"`;
+        if (component.type === "Timer") {
+          const seconds = Math.max(0, Number(component.content) || 0);
+          return `<div class="custom-component timer-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<span>⏱</span><strong data-timer-display="${component.id}">${seconds}s</strong><small>${component.action === "hide" ? "até ocultar" : "até liberar"}</small></div>`;
+        }
         if (component.type === "Vídeo") {
           const value = String(component.content || "").trim();
           let player = `<div class="video-placeholder">Cole o link ou código da Vturb nas configurações</div>`;
@@ -1292,12 +1331,12 @@
           else if (value) player = `<iframe srcdoc="${escapeAttr(value)}" title="Vídeo" sandbox="allow-scripts allow-same-origin allow-forms allow-presentation" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen></iframe>`;
           const inlineEditor = preview && state.selectedComponentId === component.id ? `<div class="inline-video-editor"><label>Link ou código da Vturb</label><textarea data-inline-component="${component.id}" data-component-key="content" placeholder="Cole aqui o link ou embed da Vturb">${escapeHtml(value)}</textarea><div class="inline-video-options"><label>Formato<select data-inline-component="${component.id}" data-component-key="aspectRatio"><option value="16:9" ${component.aspectRatio !== "9:16" ? "selected" : ""}>Horizontal 16:9</option><option value="9:16" ${component.aspectRatio === "9:16" ? "selected" : ""}>Reels 9:16</option></select></label><label>Posição<select data-inline-component="${component.id}" data-component-key="position">${["Topo", "Após o título", "Após o diagnóstico", "Após o texto", "Antes do botão"].map((label, index) => `<option value="${index}" ${Number(component.position ?? 4) === index ? "selected" : ""}>${label}</option>`).join("")}</select></label></div></div>` : "";
           const ratioClass = component.aspectRatio === "9:16" ? " video-reels" : "";
-          return `<div class="custom-component video-component${ratioClass}${selected}"${selectAttr}${dragAttr}>${toolbar}${player}${inlineEditor}</div>`;
+          return `<div class="custom-component video-component${ratioClass}${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${player}${inlineEditor}</div>`;
         }
-        if (component.type === "Imagem") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}>${toolbar}${component.content ? `<img class="custom-image" src="${escapeAttr(component.content)}" alt="">` : `<div class="component-placeholder">Imagem</div>`}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.content || "")}" placeholder="URL da imagem" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
-        if (component.type === "Botão") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}>${toolbar}<a class="diagnostic-btn custom-button" href="${escapeAttr(component.url || "#")}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Botão")}</a>${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.url || "")}" placeholder="Link do botão" data-inline-component="${component.id}" data-component-key="url"></div>` : ""}</div>`;
-        if (component.type === "Espaço") return `<div class="custom-component spacer-component${selected}" style="height:${Math.max(8, Number(component.content) || 48)}px"${selectAttr}${dragAttr}>${toolbar}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input type="number" min="8" value="${escapeAttr(component.content || "48")}" aria-label="Altura do espaço" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
-        return `<div class="custom-component generic-component${selected}"${selectAttr}${dragAttr}>${toolbar}<strong>${escapeHtml(component.type)}</strong><p contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Clique para editar")}</p></div>`;
+        if (component.type === "Imagem") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${component.content ? `<img class="custom-image" src="${escapeAttr(component.content)}" alt="">` : `<div class="component-placeholder">Imagem</div>`}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.content || "")}" placeholder="URL da imagem" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
+        if (component.type === "Botão") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<a class="diagnostic-btn custom-button" href="${escapeAttr(component.url || "#")}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Botão")}</a>${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.url || "")}" placeholder="Link do botão" data-inline-component="${component.id}" data-component-key="url"></div>` : ""}</div>`;
+        if (component.type === "Espaço") return `<div class="custom-component spacer-component${selected}" style="height:${Math.max(8, Number(component.content) || 48)}px"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input type="number" min="8" value="${escapeAttr(component.content || "48")}" aria-label="Altura do espaço" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
+        return `<div class="custom-component generic-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<strong>${escapeHtml(component.type)}</strong><p contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Clique para editar")}</p></div>`;
       }
 
       function quizSubmissions(quiz) {
@@ -1656,6 +1695,50 @@
 
       let loadingTimer = null;
       let lastPublicScrollKey = "";
+      let delayTimerHandles = [];
+      const delayStartedAt = new Map();
+
+      function activeExperienceKey(quiz) {
+        if (state.flowStage === "quiz") return `question:${Math.min(state.previewStep, quiz.questions.length - 1)}`;
+        return state.flowStage;
+      }
+
+      function startVisibilityDelays(quiz) {
+        delayTimerHandles.forEach((handle) => window.clearTimeout(handle));
+        delayTimerHandles = [];
+        const key = activeExperienceKey(quiz);
+        const timers = (quiz.stageComponents?.[key] || []).filter((item) => item.type === "Timer");
+        timers.forEach((timer) => {
+          const totalMs = Math.max(0, Number(timer.content) || 0) * 1000;
+          const runKey = `${quiz.id}:${key}:${timer.id}`;
+          if (!delayStartedAt.has(runKey)) delayStartedAt.set(runKey, Date.now());
+          const elapsed = Date.now() - delayStartedAt.get(runKey);
+          const remaining = Math.max(0, totalMs - elapsed);
+          const targets = timer.targetIds || [];
+          targets.forEach((targetId) => {
+            document.querySelectorAll(`[data-delay-target="${CSS.escape(targetId)}"]`).forEach((element) => {
+              element.classList.toggle("delay-hidden", timer.action !== "hide" && remaining > 0);
+              if (timer.action === "hide" && remaining <= 0) element.classList.add("delay-hidden");
+            });
+          });
+          const timerElement = document.querySelector(`[data-timer-display="${CSS.escape(timer.id)}"]`);
+          const timerBox = timerElement?.closest(".timer-component");
+          if (timer.showCountdown === false && timerBox) timerBox.classList.add("delay-timer-invisible");
+          const updateCountdown = () => {
+            const left = Math.max(0, totalMs - (Date.now() - delayStartedAt.get(runKey)));
+            if (timerElement) timerElement.textContent = `${Math.ceil(left / 1000)}s`;
+            if (left > 0) delayTimerHandles.push(window.setTimeout(updateCountdown, 250));
+          };
+          updateCountdown();
+          if (remaining > 0) {
+            delayTimerHandles.push(window.setTimeout(() => {
+              targets.forEach((targetId) => document.querySelectorAll(`[data-delay-target="${CSS.escape(targetId)}"]`).forEach((element) => {
+                element.classList.toggle("delay-hidden", timer.action === "hide");
+              }));
+            }, remaining));
+          }
+        });
+      }
 
       function publicView(quiz) {
         return `
@@ -1679,17 +1762,17 @@
             <div class="intro-center">
               ${stageComponentsView(quiz, "intro", preview, 0)}
               <p class="app-kicker">${escapeHtml(quiz.badge || "Aplicativo inteligente")}</p>
-              <h2>${escapeHtml(quiz.title)}</h2>
+              <h2 data-delay-target="intro-title">${escapeHtml(quiz.title)}</h2>
               ${stageComponentsView(quiz, "intro", preview, 1)}
-              <div class="intro-hero-frame">
+              <div class="intro-hero-frame" data-delay-target="intro-image">
                 <img class="intro-hero-image" src="assets/Fotodoquiz.png" alt="Viajante mostrando o aplicativo de organização de viagem">
               </div>
               ${stageComponentsView(quiz, "intro", preview, 2)}
-              <p>${escapeHtml(quiz.subtitle)}</p>
+              <p data-delay-target="intro-subtitle">${escapeHtml(quiz.subtitle)}</p>
               ${stageComponentsView(quiz, "intro", preview, 3)}
-              <button class="diagnostic-btn" data-action="${preview ? "preview-start" : "start-quiz"}">Começar o diagnóstico <span>→</span></button>
+              <button class="diagnostic-btn" data-delay-target="intro-cta" data-action="${preview ? "preview-start" : "start-quiz"}">Começar o diagnóstico <span>→</span></button>
               ${stageComponentsView(quiz, "intro", preview, 4)}
-              <div class="trust-row" aria-label="Selos de seguranca">
+              <div class="trust-row" data-delay-target="intro-trust" aria-label="Selos de seguranca">
                 <span>🛡 Site seguro</span>
                 <span>🔒 Conexão SSL criptografada</span>
                 <span><b>G</b> Verificado pelo Google</span>
@@ -1721,13 +1804,12 @@
             <div class="loading-wrap">
               ${stageComponentsView(quiz, "loading", preview, 0)}
               <p class="loading-kicker">Preparando seu diagnóstico</p>
-              <h2>Perfeito! Estamos calculando seu diagnóstico de viagem...</h2>
+              <h2 data-delay-target="loading-title">Perfeito! Estamos calculando seu diagnóstico de viagem...</h2>
               ${stageComponentsView(quiz, "loading", preview, 1)}
-              <div class="loading-bar"><span style="width:${state.loadingProgress}%"></span></div>
-              <strong class="loading-number">${state.loadingProgress}%</strong>
+              <div data-delay-target="loading-progress"><div class="loading-bar"><span style="width:${state.loadingProgress}%"></span></div><strong class="loading-number">${state.loadingProgress}%</strong></div>
               ${stageComponentsView(quiz, "loading", preview, 2)}
               <p class="social-kicker">Enquanto isso, veja quem já organizou a viagem</p>
-              <div class="social-stack">
+              <div class="social-stack" data-delay-target="loading-social">
                 ${socialCard("Jaci", "09:42", "Esse aplicativo me ajudou bastante na viagem que fiz com meu marido, o controle que ele me deu do início ao fim de como se preparar para viagem sem se preocupar com nada, foi tudo maravilhoso")}
                 ${socialCard("Davi", "11:18", "Cara, queria te agradecer por ter criado o aplicativo de viagem, estava há 2 anos sem ver a minha mãe, porque achava que ia gastar muito dinheiro, mas o aplicativo me mostrou que não era nenhum bicho de 7 cabeças, consegui fazer a viagem, levei minha esposa junto, e matamos a saudade. Agora já estou planejando a minha próxima viagem hehe")}
               </div>
@@ -1761,10 +1843,10 @@
             ${progressSegments(quiz.questions.length, step)}
             <div class="question-block">
               ${stageComponentsView(quiz, `question:${step}`, preview, 0)}
-              <h3>${escapeHtml(questionText)}</h3>
+              <h3 data-delay-target="question-title">${escapeHtml(questionText)}</h3>
               ${stageComponentsView(quiz, `question:${step}`, preview, 1)}
               ${stageComponentsView(quiz, `question:${step}`, preview, 2)}
-              <div class="answer-stack">
+              <div class="answer-stack" data-delay-target="question-options">
                 ${question.options.map((option, index) => `
                   <button class="answer-btn ${answeredIndex === index ? "selected" : ""}" data-action="${preview ? "preview-answer" : "answer"}" data-answer="${index}">
                     <span>${escapeHtml(option.text)}</span>
@@ -1807,24 +1889,24 @@
               ${stageComponentsView(quiz, "result", preview, 0)}
               <div class="plane">✈️</div>
               <p class="result-kicker">Seu perfil</p>
-              <h2>${escapeHtml(firstPart)} <span>${escapeHtml(lastWord)}</span></h2>
+              <h2 data-delay-target="result-title">${escapeHtml(firstPart)} <span>${escapeHtml(lastWord)}</span></h2>
               ${stageComponentsView(quiz, "result", preview, 1)}
-              <div class="diagnosis-box">
+              <div class="diagnosis-box" data-delay-target="result-diagnosis">
                 ${escapeHtml(result.text).split(". ").filter(Boolean).map((part) => `<p>${part.replace(/\.$/, "")}.</p>`).join("")}
               </div>
               ${stageComponentsView(quiz, "result", preview, 2)}
               <h3>Mas você não precisa de mais dinheiro.<br>Precisa de organização.</h3>
-              <div class="result-copy">
+              <div class="result-copy" data-delay-target="result-copy">
                 <p>Quem viaja com frequência não é quem ganha mais, é quem <strong>organiza melhor.</strong></p>
                 <p>Quando você sabe exatamente quanto precisa guardar, por quanto tempo, e pra onde esse dinheiro está indo, a viagem deixa de ser um sonho distante e vira uma meta com data marcada.</p>
                 <p>E por isso que criamos o <strong class="blue">Aplicativo Inteligente de Viagem</strong>, porque ele faz:</p>
               </div>
               ${stageComponentsView(quiz, "result", preview, 3)}
-              <ul class="benefit-box">
+              <ul class="benefit-box" data-delay-target="result-benefits">
                 ${(result.bullets || []).map((item) => `<li><span>✓</span>${escapeHtml(item)}</li>`).join("")}
               </ul>
               ${stageComponentsView(quiz, "result", preview, 4)}
-              <a class="diagnostic-btn result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener" data-action="${preview ? "preview-checkout-click" : "checkout-click"}">
+              <a class="diagnostic-btn result-cta" data-delay-target="result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener" data-action="${preview ? "preview-checkout-click" : "checkout-click"}">
                 ${escapeHtml(quiz.ctaLabel)}
               </a>
               <button class="text-reset" data-action="${preview ? "preview-reset" : "reset-quiz"}">Refazer diagnóstico</button>
@@ -1849,6 +1931,7 @@
         const publicQuiz = getPublicQuiz();
         const isPublicPage = publicQuiz && !adminRoute();
         if (isPublicPage && state.flowStage === "loading") startLoading();
+        if (isPublicPage) startVisibilityDelays(quiz);
         document.querySelectorAll("[data-action]").forEach((element) => {
           element.addEventListener("click", (event) => {
             const action = element.dataset.action;
@@ -2045,6 +2128,29 @@
             const component = components.find((item) => item.id === input.dataset.stageComponent);
             if (!component) return;
             component[input.dataset.componentKey] = input.value;
+            saveQuizzes();
+            refreshAdminCanvas();
+          });
+        });
+
+        document.querySelectorAll("[data-timer-target]").forEach((input) => {
+          input.addEventListener("change", () => {
+            const components = activeQuiz().stageComponents?.[stageKey(activeQuiz())] || [];
+            const timer = components.find((item) => item.id === input.dataset.timerTarget);
+            if (!timer) return;
+            timer.targetIds ||= [];
+            if (input.checked && !timer.targetIds.includes(input.value)) timer.targetIds.push(input.value);
+            if (!input.checked) timer.targetIds = timer.targetIds.filter((id) => id !== input.value);
+            saveQuizzes();
+          });
+        });
+
+        document.querySelectorAll("[data-timer-countdown]").forEach((input) => {
+          input.addEventListener("change", () => {
+            const components = activeQuiz().stageComponents?.[stageKey(activeQuiz())] || [];
+            const timer = components.find((item) => item.id === input.dataset.timerCountdown);
+            if (!timer) return;
+            timer.showCountdown = input.checked;
             saveQuizzes();
             refreshAdminCanvas();
           });
