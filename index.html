@@ -164,7 +164,8 @@
         lead: { name: "", email: "", phone: "" },
         remoteLoaded: false,
         remoteLoading: false,
-        remoteError: ""
+        remoteError: "",
+        publicQuizLoads: {}
       };
 
       function clone(value) {
@@ -197,6 +198,54 @@
 
       function saveQuizzes() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
+        scheduleQuizSync(activeQuiz());
+      }
+
+      let quizSyncTimer = null;
+
+      function scheduleQuizSync(quiz) {
+        if (!supabaseEnabled() || !quiz) return;
+        window.clearTimeout(quizSyncTimer);
+        quizSyncTimer = window.setTimeout(() => syncQuizDefinition(quiz), 450);
+      }
+
+      function syncQuizDefinition(quiz) {
+        const clean = normalizeQuiz(quiz);
+        return supabaseRequest("quiz_definitions", {
+          method: "POST",
+          prefer: "resolution=merge-duplicates",
+          body: {
+            slug: slugFor(clean),
+            quiz_id: clean.id,
+            config: clean,
+            updated_at: new Date().toISOString()
+          }
+        }).catch((error) => {
+          console.warn("Não foi possível publicar a configuração do quiz:", error);
+          state.remoteError = "O quiz foi salvo neste navegador, mas a publicação online ainda não está configurada.";
+        });
+      }
+
+      async function loadRemotePublicQuiz(slug) {
+        if (!supabaseEnabled() || !slug || state.publicQuizLoads[slug]) return;
+        state.publicQuizLoads[slug] = "loading";
+        try {
+          const rows = await supabaseRequest(`quiz_definitions?slug=eq.${encodeURIComponent(slug)}&select=config&limit=1`);
+          const remoteQuiz = rows?.[0]?.config;
+          if (remoteQuiz) {
+            const clean = normalizeQuiz(remoteQuiz);
+            const index = state.quizzes.findIndex((quiz) => quiz.id === clean.id || slugFor(quiz) === slug);
+            if (index >= 0) state.quizzes[index] = clean;
+            else state.quizzes.push(clean);
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
+          }
+          state.publicQuizLoads[slug] = "loaded";
+        } catch (error) {
+          console.warn("Não foi possível carregar a versão publicada do quiz:", error);
+          state.publicQuizLoads[slug] = "error";
+        } finally {
+          render();
+        }
       }
 
       function saveSubmissions() {
@@ -383,7 +432,6 @@
         url.search = "";
         url.hash = "";
         url.searchParams.set("quiz", slugFor(quiz));
-        url.searchParams.set("q", encodeQuiz(normalizeQuiz(quiz)));
         return url.toString();
       }
 
@@ -533,6 +581,7 @@
         const quiz = clone(defaultQuiz);
         quiz.id = uid("quiz");
         quiz.title = "Novo quiz inteligente";
+        quiz.slug = slugify(`novo-quiz-${quiz.id.slice(-6)}`);
         state.quizzes.unshift(quiz);
         state.activeId = quiz.id;
         state.adminStage = 0;
@@ -547,6 +596,7 @@
         const quiz = clone(source);
         quiz.id = uid("quiz");
         quiz.title = source.title + " - copia";
+        quiz.slug = slugify(`${slugFor(source)}-${quiz.id.slice(-6)}`);
         state.quizzes.unshift(quiz);
         state.activeId = quiz.id;
         state.adminStage = 0;
@@ -784,6 +834,11 @@
       }
 
       function render() {
+        const routeParams = new URLSearchParams(window.location.search);
+        const publicSlug = routeParams.get("quiz");
+        if (publicSlug && !adminRoute() && !routeParams.has("q") && !routeParams.has("preview")) {
+          loadRemotePublicQuiz(publicSlug);
+        }
         const publicQuiz = getPublicQuiz();
         const isPublic = publicQuiz && !adminRoute();
         const publicScrollKey = isPublic
@@ -1148,7 +1203,7 @@
 
         return `
           <h3>Publicação</h3>
-          ${textInput("Nome do link", "slug", slugFor(quiz))}
+          <label class="field"><span>Nome do link permanente</span><input readonly value="${escapeAttr(slugFor(quiz))}"></label>
           ${textInput("Link de compra ou WhatsApp", "purchaseUrl", quiz.purchaseUrl)}
           <div class="copy-row">
             <input readonly value="${escapeAttr(link)}" data-share-link>
@@ -1344,7 +1399,7 @@
                   ${state.quizzes.map((item) => `<option value="${item.id}" ${item.id === quiz.id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
                 </select>
               </label>
-              ${textInput("Nome do link", "slug", slugFor(quiz))}
+              <label class="field"><span>Nome do link permanente</span><input readonly value="${escapeAttr(slugFor(quiz))}"></label>
               ${textInput("Link de compra ou WhatsApp", "purchaseUrl", quiz.purchaseUrl)}
               <label class="field">
                 <span>Link do usuário</span>

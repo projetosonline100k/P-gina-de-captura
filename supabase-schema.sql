@@ -20,8 +20,39 @@ create table if not exists public.quiz_funnel (
   stage text not null default 'visit'
 );
 
+create table if not exists public.quiz_definitions (
+  slug text primary key,
+  quiz_id text not null,
+  config jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
 alter table public.quiz_submissions enable row level security;
 alter table public.quiz_funnel enable row level security;
+alter table public.quiz_definitions enable row level security;
+
+drop policy if exists "Allow public read quiz definitions" on public.quiz_definitions;
+drop policy if exists "Allow public insert quiz definitions" on public.quiz_definitions;
+drop policy if exists "Allow public update quiz definitions" on public.quiz_definitions;
+
+create policy "Allow public read quiz definitions"
+on public.quiz_definitions
+for select
+to anon
+using (true);
+
+create policy "Allow public insert quiz definitions"
+on public.quiz_definitions
+for insert
+to anon
+with check (true);
+
+create policy "Allow public update quiz definitions"
+on public.quiz_definitions
+for update
+to anon
+using (true)
+with check (true);
 
 drop policy if exists "Allow public insert submissions" on public.quiz_submissions;
 drop policy if exists "Allow public read submissions" on public.quiz_submissions;
