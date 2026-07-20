@@ -220,18 +220,45 @@
             config: clean,
             updated_at: new Date().toISOString()
           }
-        }).catch((error) => {
+        }).catch(() => syncQuizDefinitionFallback(clean));
+      }
+
+      async function syncQuizDefinitionFallback(quiz) {
+        const slug = slugFor(quiz);
+        const id = `quiz-definition:${slug}`;
+        try {
+          await supabaseRequest(`quiz_submissions?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+          await supabaseRequest("quiz_submissions", {
+            method: "POST",
+            body: {
+              id,
+              quiz_id: quiz.id,
+              created_at: new Date().toISOString(),
+              traveler_name: "",
+              answers: quiz,
+              result_profile: "__quiz_definition__",
+              result_title: slug
+            }
+          });
+          state.remoteError = "";
+        } catch (error) {
           console.warn("Não foi possível publicar a configuração do quiz:", error);
-          state.remoteError = "O quiz foi salvo neste navegador, mas a publicação online ainda não está configurada.";
-        });
+          state.remoteError = "O quiz foi salvo neste navegador, mas não foi possível publicá-lo online.";
+        }
       }
 
       async function loadRemotePublicQuiz(slug) {
         if (!supabaseEnabled() || !slug || state.publicQuizLoads[slug]) return;
         state.publicQuizLoads[slug] = "loading";
         try {
-          const rows = await supabaseRequest(`quiz_definitions?slug=eq.${encodeURIComponent(slug)}&select=config&limit=1`);
-          const remoteQuiz = rows?.[0]?.config;
+          let remoteQuiz = null;
+          try {
+            const rows = await supabaseRequest(`quiz_definitions?slug=eq.${encodeURIComponent(slug)}&select=config&limit=1`);
+            remoteQuiz = rows?.[0]?.config || null;
+          } catch (error) {
+            const fallbackRows = await supabaseRequest(`quiz_submissions?result_profile=eq.__quiz_definition__&result_title=eq.${encodeURIComponent(slug)}&select=answers&limit=1`);
+            remoteQuiz = fallbackRows?.[0]?.answers || null;
+          }
           if (remoteQuiz) {
             const clean = normalizeQuiz(remoteQuiz);
             const index = state.quizzes.findIndex((quiz) => quiz.id === clean.id || slugFor(quiz) === slug);
@@ -351,12 +378,15 @@
             supabaseRequest("quiz_submissions?select=*&order=created_at.asc"),
             supabaseRequest("quiz_funnel?select=*&order=updated_at.asc")
           ]);
-          state.submissions = (submissionRows || []).map(remoteSubmission);
+          state.submissions = (submissionRows || [])
+            .filter((row) => row.result_profile !== "__quiz_definition__")
+            .map(remoteSubmission);
           state.funnel = (funnelRows || []).map(remoteFunnel);
           state.remoteLoaded = true;
           state.remoteError = "";
           saveSubmissions();
           saveFunnel();
+          scheduleQuizSync(activeQuiz());
         } catch (error) {
           console.warn("Supabase ainda nao esta pronto:", error);
           state.remoteError = "Supabase ainda não conectado. Confira as tabelas e políticas.";
