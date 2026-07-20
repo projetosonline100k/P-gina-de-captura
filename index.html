@@ -924,7 +924,7 @@
             if (action === "preview-reset") state.adminStage = 0;
             if (action === "preview-checkout-click") window.open(element.href, "_blank", "noopener");
             if (action === "select-custom-component") {
-              if (event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, input, textarea, [contenteditable='true']")) return;
+              if (event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, .inline-timer-editor, input, textarea, select, [contenteditable='true']")) return;
               state.selectedComponentId = element.dataset.componentId;
             }
             if (action === "remove-stage-component") removeStageComponent(element.dataset.componentId);
@@ -947,6 +947,24 @@
           });
           if (input.matches("textarea, input, select")) input.addEventListener("change", refreshAdminCanvas);
           input.addEventListener("click", (event) => event.stopPropagation());
+        });
+        root.querySelectorAll("[data-timer-target]").forEach((input) => {
+          input.addEventListener("change", () => {
+            const timer = (activeQuiz().stageComponents?.[stageKey(activeQuiz())] || []).find((item) => item.id === input.dataset.timerTarget);
+            if (!timer) return;
+            timer.targetIds ||= [];
+            if (input.checked && !timer.targetIds.includes(input.value)) timer.targetIds.push(input.value);
+            if (!input.checked) timer.targetIds = timer.targetIds.filter((id) => id !== input.value);
+            saveQuizzes();
+          });
+        });
+        root.querySelectorAll("[data-timer-countdown]").forEach((input) => {
+          input.addEventListener("change", () => {
+            const timer = (activeQuiz().stageComponents?.[stageKey(activeQuiz())] || []).find((item) => item.id === input.dataset.timerCountdown);
+            if (!timer) return;
+            timer.showCountdown = input.checked;
+            saveQuizzes();
+          });
         });
         root.querySelectorAll("[data-custom-draggable]").forEach((component) => {
           component.addEventListener("dragstart", (event) => {
@@ -1301,6 +1319,24 @@
         `;
       }
 
+      function inlineTimerEditor(component) {
+        const targets = timerTargetOptions(activeQuiz(), state.adminStage);
+        const selected = component.targetIds || [];
+        return `
+          <div class="inline-timer-editor">
+            <div class="inline-timer-head">
+              <label>Tempo em segundos<input type="number" min="0" value="${Math.max(0, Number(component.content) || 0)}" data-inline-component="${component.id}" data-component-key="content"></label>
+              <label>Quando terminar<select data-inline-component="${component.id}" data-component-key="action"><option value="show" ${component.action !== "hide" ? "selected" : ""}>Mostrar selecionados</option><option value="hide" ${component.action === "hide" ? "selected" : ""}>Esconder selecionados</option></select></label>
+            </div>
+            <label class="check-row"><input type="checkbox" ${component.showCountdown !== false ? "checked" : ""} data-timer-countdown="${component.id}"> Mostrar relógio para o usuário</label>
+            <strong>O que este Timer controla?</strong>
+            <div class="inline-timer-targets">
+              ${targets.map(([id, label]) => `<label><input type="checkbox" value="${escapeAttr(id)}" ${selected.includes(id) ? "checked" : ""} data-timer-target="${component.id}"><span>${escapeHtml(label)}</span></label>`).join("") || `<p>Adicione um elemento nesta etapa para poder selecioná-lo.</p>`}
+            </div>
+          </div>
+        `;
+      }
+
       function stageComponentsView(quiz, key, preview, position = 4) {
         const components = (quiz.stageComponents?.[key] || []).filter((component) => Number(component.position ?? 4) === position);
         if (!components.length && !preview) return "";
@@ -1322,7 +1358,8 @@
         const targetAttr = ` data-delay-target="component:${component.id}"`;
         if (component.type === "Timer") {
           const seconds = Math.max(0, Number(component.content) || 0);
-          return `<div class="custom-component timer-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<span>⏱</span><strong data-timer-display="${component.id}">${seconds}s</strong><small>${component.action === "hide" ? "até ocultar" : "até liberar"}</small></div>`;
+          const directEditor = preview && state.selectedComponentId === component.id ? inlineTimerEditor(component) : "";
+          return `<div class="custom-component timer-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<div class="timer-summary"><span>⏱</span><strong data-timer-display="${component.id}">${seconds}s</strong><small>${component.action === "hide" ? "até ocultar" : "até liberar"}</small></div>${directEditor}</div>`;
         }
         if (component.type === "Vídeo") {
           const value = String(component.content || "").trim();
@@ -1964,7 +2001,7 @@
             if (action === "move-custom-up") moveStageComponent(element.dataset.componentId, -1);
             if (action === "move-custom-down") moveStageComponent(element.dataset.componentId, 1);
             if (action === "select-custom-component") {
-              if (event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, input, textarea, [contenteditable='true']")) return;
+              if (event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, .inline-timer-editor, input, textarea, select, [contenteditable='true']")) return;
               state.selectedComponentId = element.dataset.componentId;
               render();
             }

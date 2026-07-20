@@ -992,10 +992,8 @@ select:focus {
 }
 
 .timer-component {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
+  display: grid;
+  gap: 12px;
   min-height: 72px;
   padding: 16px;
   border: 1px solid #d7e0ea;
@@ -1004,17 +1002,83 @@ select:focus {
   background: #f5f8fb;
 }
 
-.timer-component > span {
+.timer-summary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.timer-summary > span {
   font-size: 24px;
 }
 
-.timer-component > strong {
+.timer-summary > strong {
   font-size: 24px;
 }
 
-.timer-component > small {
+.timer-summary > small {
   color: #6b7480;
   font-weight: 800;
+}
+
+.inline-timer-editor {
+  display: grid;
+  gap: 13px;
+  padding: 16px;
+  border: 1px solid #d6deea;
+  border-radius: 10px;
+  color: #20252d;
+  background: #fff;
+  text-align: left;
+}
+
+.inline-timer-head {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.inline-timer-head label {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.inline-timer-head input,
+.inline-timer-head select {
+  width: 100%;
+  min-height: 42px;
+  padding: 0 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 7px;
+  background: #fff;
+}
+
+.inline-timer-targets {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.inline-timer-targets label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid #e1e6ec;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.inline-timer-targets label:has(input:checked) {
+  border-color: #2d76df;
+  color: #245fba;
+  background: #edf5ff;
 }
 
 .delay-hidden,
