@@ -2440,7 +2440,9 @@
             activeQuiz().questions[questionIndex].options[optionIndex].text = element.textContent.trim();
             saveQuizzes();
           });
-          element.addEventListener("click", (event) => event.stopPropagation());
+          element.addEventListener("click", (event) => {
+            if (element.isContentEditable) event.stopPropagation();
+          });
         });
 
         document.querySelectorAll("[data-map-result-key]").forEach((element) => {
