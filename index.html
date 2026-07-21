@@ -386,7 +386,6 @@
           state.remoteError = "";
           saveSubmissions();
           saveFunnel();
-          scheduleQuizSync(activeQuiz());
         } catch (error) {
           console.warn("Supabase ainda nao esta pronto:", error);
           state.remoteError = "Supabase ainda não conectado. Confira as tabelas e políticas.";
@@ -2023,8 +2022,16 @@
             if (action === "export-submissions") exportSubmissions(activeQuiz());
             if (action === "save-quiz") {
               saveQuizzes();
-              element.textContent = "Salvo";
-              window.setTimeout(() => { element.textContent = "Salvar"; }, 1100);
+              window.clearTimeout(quizSyncTimer);
+              element.disabled = true;
+              element.textContent = "Publicando...";
+              syncQuizDefinition(activeQuiz()).then(() => {
+                element.textContent = state.remoteError ? "Erro ao publicar" : "Publicado";
+                window.setTimeout(() => {
+                  element.disabled = false;
+                  element.textContent = "Salvar";
+                }, 1400);
+              });
             }
             if (action === "component-pick") {
               addStageComponent(element.dataset.component);
