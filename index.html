@@ -505,8 +505,9 @@
         if (!clean.results.length) clean.results = clone(defaultQuiz.results);
         clean.stageComponents = clean.stageComponents || {};
         Object.values(clean.stageComponents).flat().forEach((component) => {
-          if (component?.type === "Timer" && !component.behaviorVersion) {
+          if (component?.type === "Timer") {
             component.action = "show";
+            component.showCountdown = false;
             component.behaviorVersion = 2;
           }
         });
@@ -531,7 +532,7 @@
           "Imagem": { content: "", label: "Cole a URL da imagem" },
           "Botão": { content: "Quero continuar", url: "#" },
           "Espaço": { content: "48" },
-          "Timer": { content: "10", action: "show", targetIds: [], showCountdown: true, behaviorVersion: 2 },
+          "Timer": { content: "10", action: "show", targetIds: [], showCountdown: false, behaviorVersion: 2 },
           "Script": { content: "" }
         };
         const component = { id: uid("component"), type, position: 4, aspectRatio: "16:9", ...(defaults[type] || { content: `Novo componente de ${type}` }) };
@@ -1311,11 +1312,8 @@
         const selected = component.targetIds || [];
         return `
           <div class="timer-editor">
-            <div class="field-row">
-              <label class="field"><span>Atraso em segundos</span><input type="number" min="0" value="${Math.max(0, Number(component.content) || 0)}" data-stage-component="${component.id}" data-component-key="content"></label>
-              <label class="field"><span>Comportamento</span><select data-stage-component="${component.id}" data-component-key="action"><option value="show" ${component.action !== "hide" ? "selected" : ""}>Começa escondido e aparece depois</option><option value="hide" ${component.action === "hide" ? "selected" : ""}>Começa visível e desaparece depois</option></select></label>
-            </div>
-            <label class="check-row"><input type="checkbox" ${component.showCountdown !== false ? "checked" : ""} data-timer-countdown="${component.id}"> Exibir contagem regressiva</label>
+            <label class="field"><span>Atraso em segundos</span><input type="number" min="0" value="${Math.max(0, Number(component.content) || 0)}" data-stage-component="${component.id}" data-component-key="content"></label>
+            <p class="timer-behavior-note">Os elementos marcados começam escondidos e aparecem quando o tempo terminar. O relógio não aparece para o usuário.</p>
             <strong class="timer-target-title">Elementos afetados</strong>
             <div class="timer-target-list">
               ${timerTargetOptions(quiz, stage).map(([id, label]) => `<label class="check-row"><input type="checkbox" value="${escapeAttr(id)}" ${selected.includes(id) ? "checked" : ""} data-timer-target="${component.id}"> ${escapeHtml(label)}</label>`).join("") || `<p class="settings-note">Adicione outro componente nesta etapa para controlá-lo.</p>`}
@@ -1329,11 +1327,10 @@
         const selected = component.targetIds || [];
         return `
           <div class="inline-timer-editor">
-            <div class="inline-timer-head">
+            <div class="inline-timer-head single-field">
               <label>Tempo em segundos<input type="number" min="0" value="${Math.max(0, Number(component.content) || 0)}" data-inline-component="${component.id}" data-component-key="content"></label>
-              <label>Comportamento<select data-inline-component="${component.id}" data-component-key="action"><option value="show" ${component.action !== "hide" ? "selected" : ""}>Escondido → aparece</option><option value="hide" ${component.action === "hide" ? "selected" : ""}>Visível → desaparece</option></select></label>
             </div>
-            <label class="check-row"><input type="checkbox" ${component.showCountdown !== false ? "checked" : ""} data-timer-countdown="${component.id}"> Mostrar relógio para o usuário</label>
+            <p class="timer-behavior-note">Os itens marcados começam escondidos e aparecem após esse tempo. O relógio fica invisível para o usuário.</p>
             <strong>O que este Timer controla?</strong>
             <div class="inline-timer-targets">
               ${targets.map(([id, label]) => `<label><input type="checkbox" value="${escapeAttr(id)}" ${selected.includes(id) ? "checked" : ""} data-timer-target="${component.id}"><span>${escapeHtml(label)}</span></label>`).join("") || `<p>Adicione um elemento nesta etapa para poder selecioná-lo.</p>`}
@@ -1362,6 +1359,7 @@
           </div>` : "";
         const targetAttr = ` data-delay-target="component:${component.id}"`;
         if (component.type === "Timer") {
+          if (!preview) return "";
           const seconds = Math.max(0, Number(component.content) || 0);
           const directEditor = preview && state.selectedComponentId === component.id ? inlineTimerEditor(component) : "";
           return `<div class="custom-component timer-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<div class="timer-summary"><span>⏱</span><strong data-timer-display="${component.id}">${seconds}s</strong><small>${component.action === "hide" ? "até ocultar" : "até liberar"}</small></div>${directEditor}</div>`;
@@ -1951,7 +1949,6 @@
               <a class="diagnostic-btn result-cta" data-delay-target="result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener" data-action="${preview ? "preview-checkout-click" : "checkout-click"}">
                 ${escapeHtml(quiz.ctaLabel)}
               </a>
-              <button class="text-reset" data-action="${preview ? "preview-reset" : "reset-quiz"}">Refazer diagnóstico</button>
             </div>
           </section>
         `;

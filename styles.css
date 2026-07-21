@@ -1039,6 +1039,21 @@ select:focus {
   gap: 10px;
 }
 
+.inline-timer-head.single-field {
+  grid-template-columns: 1fr;
+}
+
+.timer-behavior-note {
+  margin: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  color: #245fba;
+  background: #edf5ff;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .inline-timer-head label {
   display: grid;
   gap: 6px;
@@ -1073,6 +1088,12 @@ select:focus {
   cursor: pointer;
   font-size: 13px;
   font-weight: 800;
+}
+
+.inline-timer-targets input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
 }
 
 .inline-timer-targets label:has(input:checked) {
