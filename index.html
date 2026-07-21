@@ -1087,11 +1087,13 @@
       }
 
       function stageThumbnail(quiz, stage) {
-        if (stage === 0) return `<small>Boas-vindas</small><p>${escapeHtml(quiz.title)}</p>`;
-        if (stage > 0 && stage <= quiz.questions.length) return `<small>Pergunta ${stage}</small><p>${escapeHtml(quiz.questions[stage - 1].text)}</p>`;
-        if (stage === quiz.questions.length + 1) return `<small>Processamento</small><p>Preparando seu diagnóstico...</p>`;
-        if (stage === quiz.questions.length + 2) return `<small>Resultado</small><p>${escapeHtml(quiz.results[0]?.title || "Resultado")}</p>`;
-        return `<small>Publicação</small><p>${escapeHtml(slugFor(quiz))}</p>`;
+        let page = "";
+        if (stage === 0) page = introView(quiz, false);
+        else if (stage > 0 && stage <= quiz.questions.length) page = questionView(quiz, stage - 1, false);
+        else if (stage === quiz.questions.length + 1) page = loadingView(quiz, false);
+        else if (stage === quiz.questions.length + 2) page = resultView(quiz, quiz.results[0] || defaultQuiz.results[0], false);
+        else page = `<section class="map-publication-page"><span>✓</span><h2>Quiz pronto para publicar</h2><p>${escapeHtml(shareUrl(quiz))}</p></section>`;
+        return `<div class="funnel-page-preview" aria-hidden="true"><div class="funnel-page-preview-inner public-shell" inert>${page}</div></div>`;
       }
 
       function pageBuilderCanvas(quiz, link, stageNames, activeStage, componentNames) {

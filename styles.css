@@ -641,7 +641,7 @@ select:focus {
 
 .funnel-node-track {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   width: max-content;
   min-width: 100%;
   padding: 32px 10px 48px;
@@ -652,20 +652,37 @@ select:focus {
   align-items: center;
 }
 
+.funnel-node-wrap:nth-child(even) {
+  margin-top: 190px;
+}
+
 .funnel-connector {
   display: grid;
   width: 70px;
   place-items: center;
-  color: #8da0b7;
-  font-size: 30px;
+  height: 2px;
+  margin: 0 10px;
+  border-top: 3px dashed #7f8fa3;
+  color: transparent;
+  font-size: 0;
   font-weight: 900;
+}
+
+.funnel-node-wrap:nth-child(even) .funnel-connector {
+  width: 105px;
+  transform: translateY(-95px) rotate(38deg);
+}
+
+.funnel-node-wrap:nth-child(odd):not(:first-child) .funnel-connector {
+  width: 105px;
+  transform: translateY(95px) rotate(-38deg);
 }
 
 .funnel-node {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  width: 250px;
-  height: 330px;
+  width: 310px;
+  height: 520px;
   overflow: hidden;
   border: 2px solid #dce3eb;
   border-radius: 16px;
@@ -718,31 +735,77 @@ select:focus {
 }
 
 .funnel-node-preview {
+  position: relative;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: #fff;
+}
+
+.funnel-page-preview {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: #fff;
+  pointer-events: none;
+}
+
+.funnel-page-preview-inner {
+  width: 1040px;
+  min-height: 1700px;
+  zoom: 0.294;
+  pointer-events: none;
+  transform-origin: top left;
+}
+
+.funnel-page-preview-inner .quiz-page {
+  min-height: 1500px;
+}
+
+.funnel-page-preview-inner .intro-page {
+  align-content: start;
+  padding-top: 90px;
+}
+
+.funnel-page-preview-inner .question-page {
+  padding-top: 150px;
+}
+
+.funnel-page-preview-inner .custom-components.empty-component-position {
+  display: none;
+}
+
+.map-publication-page {
   display: grid;
   align-content: center;
-  gap: 10px;
-  padding: 22px;
+  justify-items: center;
+  min-height: 1500px;
+  padding: 80px;
+  color: #112b4a;
   text-align: center;
 }
 
-.funnel-node-preview small {
-  color: #2d76df;
-  font-weight: 900;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
+.map-publication-page span {
+  display: grid;
+  width: 120px;
+  height: 120px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #19a64f;
+  font-size: 64px;
 }
 
-.funnel-node-preview p {
-  display: -webkit-box;
-  margin: 0;
-  overflow: hidden;
-  color: #112b4a;
+.map-publication-page h2 {
+  margin: 40px 0 20px;
   font-family: "Playfair Display", Georgia, serif;
-  font-size: 20px;
-  font-weight: 900;
-  line-height: 1.22;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 5;
+  font-size: 68px;
+}
+
+.map-publication-page p {
+  max-width: 760px;
+  overflow-wrap: anywhere;
+  font-size: 24px;
 }
 
 .funnel-node-foot {
