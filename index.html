@@ -1297,7 +1297,7 @@
         const common = {
           intro: [["intro-title", "Título"], ["intro-image", "Imagem principal"], ["intro-subtitle", "Subtítulo"], ["intro-cta", "Botão de começar"], ["intro-trust", "Selos de segurança"]],
           loading: [["loading-title", "Título do carregamento"], ["loading-progress", "Barra de progresso"], ["loading-social", "Depoimentos"]],
-          result: [["result-title", "Título do resultado"], ["result-diagnosis", "Diagnóstico"], ["result-copy", "Texto de venda"], ["result-benefits", "Benefícios"], ["result-cta", "Botão principal"]]
+          result: [["result-title", "Título do resultado"], ["result-diagnosis", "Diagnóstico"], ["result-organization-title", "Título: Precisa de organização"], ["result-copy", "Texto de venda"], ["result-benefits", "Benefícios"], ["result-cta", "Botão principal"]]
         };
         const base = key.startsWith("question:")
           ? [["question-title", "Pergunta"], ["question-options", "Opções de resposta"]]
@@ -1935,7 +1935,7 @@
                 ${escapeHtml(result.text).split(". ").filter(Boolean).map((part) => `<p>${part.replace(/\.$/, "")}.</p>`).join("")}
               </div>
               ${stageComponentsView(quiz, "result", preview, 2)}
-              <h3>Mas você não precisa de mais dinheiro.<br>Precisa de organização.</h3>
+              <h3 data-delay-target="result-organization-title">Mas você não precisa de mais dinheiro.<br>Precisa de organização.</h3>
               <div class="result-copy" data-delay-target="result-copy">
                 <p>Quem viaja com frequência não é quem ganha mais, é quem <strong>organiza melhor.</strong></p>
                 <p>Quando você sabe exatamente quanto precisa guardar, por quanto tempo, e pra onde esse dinheiro está indo, a viagem deixa de ser um sonho distante e vira uma meta com data marcada.</p>
