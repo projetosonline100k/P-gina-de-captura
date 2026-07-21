@@ -175,7 +175,7 @@
       function loadQuizzes() {
         try {
           const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
-          if (Array.isArray(saved) && saved.length) return saved;
+          if (Array.isArray(saved) && saved.length) return saved.map(normalizeQuiz);
         } catch (error) {}
         return [clone(defaultQuiz)];
       }
@@ -504,6 +504,12 @@
         if (!clean.questions.length) clean.questions = clone(defaultQuiz.questions);
         if (!clean.results.length) clean.results = clone(defaultQuiz.results);
         clean.stageComponents = clean.stageComponents || {};
+        Object.values(clean.stageComponents).flat().forEach((component) => {
+          if (component?.type === "Timer" && !component.behaviorVersion) {
+            component.action = "show";
+            component.behaviorVersion = 2;
+          }
+        });
         return clean;
       }
 
@@ -525,7 +531,7 @@
           "Imagem": { content: "", label: "Cole a URL da imagem" },
           "Botão": { content: "Quero continuar", url: "#" },
           "Espaço": { content: "48" },
-          "Timer": { content: "10", action: "show", targetIds: [], showCountdown: true },
+          "Timer": { content: "10", action: "show", targetIds: [], showCountdown: true, behaviorVersion: 2 },
           "Script": { content: "" }
         };
         const component = { id: uid("component"), type, position: 4, aspectRatio: "16:9", ...(defaults[type] || { content: `Novo componente de ${type}` }) };
@@ -1307,7 +1313,7 @@
           <div class="timer-editor">
             <div class="field-row">
               <label class="field"><span>Atraso em segundos</span><input type="number" min="0" value="${Math.max(0, Number(component.content) || 0)}" data-stage-component="${component.id}" data-component-key="content"></label>
-              <label class="field"><span>Depois do tempo</span><select data-stage-component="${component.id}" data-component-key="action"><option value="show" ${component.action !== "hide" ? "selected" : ""}>Mostrar selecionados</option><option value="hide" ${component.action === "hide" ? "selected" : ""}>Ocultar selecionados</option></select></label>
+              <label class="field"><span>Comportamento</span><select data-stage-component="${component.id}" data-component-key="action"><option value="show" ${component.action !== "hide" ? "selected" : ""}>Começa escondido e aparece depois</option><option value="hide" ${component.action === "hide" ? "selected" : ""}>Começa visível e desaparece depois</option></select></label>
             </div>
             <label class="check-row"><input type="checkbox" ${component.showCountdown !== false ? "checked" : ""} data-timer-countdown="${component.id}"> Exibir contagem regressiva</label>
             <strong class="timer-target-title">Elementos afetados</strong>
@@ -1325,7 +1331,7 @@
           <div class="inline-timer-editor">
             <div class="inline-timer-head">
               <label>Tempo em segundos<input type="number" min="0" value="${Math.max(0, Number(component.content) || 0)}" data-inline-component="${component.id}" data-component-key="content"></label>
-              <label>Quando terminar<select data-inline-component="${component.id}" data-component-key="action"><option value="show" ${component.action !== "hide" ? "selected" : ""}>Mostrar selecionados</option><option value="hide" ${component.action === "hide" ? "selected" : ""}>Esconder selecionados</option></select></label>
+              <label>Comportamento<select data-inline-component="${component.id}" data-component-key="action"><option value="show" ${component.action !== "hide" ? "selected" : ""}>Escondido → aparece</option><option value="hide" ${component.action === "hide" ? "selected" : ""}>Visível → desaparece</option></select></label>
             </div>
             <label class="check-row"><input type="checkbox" ${component.showCountdown !== false ? "checked" : ""} data-timer-countdown="${component.id}"> Mostrar relógio para o usuário</label>
             <strong>O que este Timer controla?</strong>
