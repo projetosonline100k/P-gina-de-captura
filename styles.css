@@ -553,6 +553,252 @@ select:focus {
   min-height: calc(100vh - 56px);
 }
 
+.page-editor-switcher {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 48px;
+  padding: 0 18px;
+  border-bottom: 1px solid #e5e9ef;
+  background: #fff;
+}
+
+.page-editor-switcher button {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid #dce2e9;
+  border-radius: 7px;
+  color: #475569;
+  background: #fff;
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.flow-builder-workspace {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: calc(100vh - 56px);
+  background: #f8fafc;
+}
+
+.flow-component-tray {
+  display: grid;
+  gap: 10px;
+  padding: 13px 18px;
+  border-bottom: 1px solid #dfe5ec;
+  background: #fff;
+}
+
+.flow-tray-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.flow-tray-head strong {
+  font-size: 14px;
+}
+
+.flow-tray-head span {
+  color: #8a94a2;
+  font-size: 12px;
+}
+
+.flow-tray-scroll {
+  display: flex;
+  gap: 9px;
+  overflow-x: auto;
+  padding-bottom: 3px;
+}
+
+.flow-tray-scroll .component-pill {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 132px;
+}
+
+.funnel-map {
+  position: relative;
+  min-height: 0;
+  padding: 54px 40px 80px;
+  overflow: auto;
+  background-color: #f8fafc;
+  background-image: radial-gradient(#d6dde7 1px, transparent 1px);
+  background-size: 22px 22px;
+}
+
+.funnel-map-hint {
+  position: absolute;
+  top: 16px;
+  left: 40px;
+  padding: 7px 11px;
+  border-radius: 7px;
+  color: #667085;
+  background: rgba(255, 255, 255, 0.9);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.funnel-node-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  min-width: 100%;
+  padding: 32px 10px 48px;
+}
+
+.funnel-node-wrap {
+  display: flex;
+  align-items: center;
+}
+
+.funnel-connector {
+  display: grid;
+  width: 70px;
+  place-items: center;
+  color: #8da0b7;
+  font-size: 30px;
+  font-weight: 900;
+}
+
+.funnel-node {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  width: 250px;
+  height: 330px;
+  overflow: hidden;
+  border: 2px solid #dce3eb;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(25, 42, 70, 0.08);
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.funnel-node:hover,
+.funnel-node.active {
+  transform: translateY(-5px);
+  border-color: #2d76df;
+  box-shadow: 0 16px 34px rgba(45, 118, 223, 0.16);
+}
+
+.funnel-node.stage-drop-active {
+  transform: translateY(-8px) scale(1.03);
+  border-color: #19a64f;
+  box-shadow: 0 0 0 6px rgba(25, 166, 79, 0.14);
+}
+
+.funnel-node-head,
+.funnel-node-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 13px 14px;
+}
+
+.funnel-node-head {
+  border-bottom: 1px solid #e7ebf0;
+}
+
+.funnel-node-head span {
+  display: grid;
+  width: 25px;
+  height: 25px;
+  place-items: center;
+  border-radius: 50%;
+  color: #fff;
+  background: #2d76df;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.funnel-node-head strong {
+  flex: 1;
+}
+
+.funnel-node-preview {
+  display: grid;
+  align-content: center;
+  gap: 10px;
+  padding: 22px;
+  text-align: center;
+}
+
+.funnel-node-preview small {
+  color: #2d76df;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.funnel-node-preview p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #112b4a;
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.22;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+}
+
+.funnel-node-foot {
+  border-top: 1px solid #e7ebf0;
+  color: #788493;
+  font-size: 11px;
+}
+
+.funnel-node-foot b {
+  color: #2d76df;
+}
+
+.funnel-add-node {
+  min-height: 44px;
+  padding: 0 18px;
+  border: 2px dashed #9eabb9;
+  border-radius: 10px;
+  color: #475569;
+  background: rgba(255, 255, 255, 0.86);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.funnel-context-menu {
+  position: fixed;
+  z-index: 1000;
+  display: grid;
+  min-width: 220px;
+  overflow: hidden;
+  border: 1px solid #dce2e9;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 16px 38px rgba(17, 32, 52, 0.2);
+}
+
+.funnel-context-menu strong {
+  padding: 12px 14px 8px;
+  color: #7b8490;
+  font-size: 11px;
+  text-transform: uppercase;
+}
+
+.funnel-context-menu button {
+  padding: 13px 14px;
+  border: 0;
+  color: #20252d;
+  background: #fff;
+  cursor: pointer;
+  text-align: left;
+  font-weight: 900;
+}
+
+.funnel-context-menu button:hover {
+  background: #edf5ff;
+}
+
 .stage-sidebar {
   border-right: 1px solid #eceff3;
   background: #fbfcfd;

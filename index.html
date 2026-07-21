@@ -154,6 +154,7 @@
         activeId: null,
         adminTab: "home",
         adminStage: 0,
+        builderView: "flow",
         adminResultIndex: 0,
         selectedComponentId: null,
         flowStage: "intro",
@@ -1029,7 +1030,13 @@
           "Publicação"
         ];
         const activeStage = Math.min(state.adminStage, stageNames.length - 1);
-        const componentNames = [
+        const componentNames = componentCatalog();
+        if (state.builderView === "flow") return adminShell(quiz, link, flowBuilderCanvas(quiz, stageNames, componentNames));
+        return adminShell(quiz, link, pageBuilderCanvas(quiz, link, stageNames, activeStage, componentNames));
+      }
+
+      function componentCatalog() {
+        return [
           ["⚠", "Alerta"],
           ["▤", "Argumentos"],
           ["☰", "Nível"],
@@ -1048,7 +1055,51 @@
           ["▣", "Vídeo"],
           ["</>", "Script"]
         ];
-        return adminShell(quiz, link, `
+      }
+
+      function flowBuilderCanvas(quiz, stageNames, componentNames) {
+        return `
+          <div class="flow-builder-workspace">
+            <div class="flow-component-tray">
+              <div class="flow-tray-head"><strong>Componentes</strong><span>Arraste para uma etapa</span></div>
+              <div class="flow-tray-scroll">
+                ${componentNames.map(([iconValue, name]) => `<button class="component-pill" draggable="true" data-action="component-pick" data-component="${escapeAttr(name)}"><span>${iconValue}</span>${name}</button>`).join("")}
+              </div>
+            </div>
+            <div class="funnel-map" data-funnel-map>
+              <div class="funnel-map-hint">Clique em uma etapa para editar · botão direito no espaço vazio para adicionar</div>
+              <div class="funnel-node-track">
+                ${stageNames.map((name, index) => `
+                  <div class="funnel-node-wrap">
+                    ${index ? `<span class="funnel-connector" aria-hidden="true">→</span>` : ""}
+                    <article class="funnel-node ${index === state.adminStage ? "active" : ""}" data-stage-drop="${index}" data-action="open-stage-editor" data-stage="${index}">
+                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong></div>
+                      <div class="funnel-node-preview">${stageThumbnail(quiz, index)}</div>
+                      <div class="funnel-node-foot"><span>${(quiz.stageComponents?.[stageKey(quiz, index)] || []).length} componentes</span><b>Editar →</b></div>
+                    </article>
+                  </div>
+                `).join("")}
+              </div>
+              <button class="funnel-add-node" data-action="add-question">+ Nova pergunta</button>
+            </div>
+          </div>
+        `;
+      }
+
+      function stageThumbnail(quiz, stage) {
+        if (stage === 0) return `<small>Boas-vindas</small><p>${escapeHtml(quiz.title)}</p>`;
+        if (stage > 0 && stage <= quiz.questions.length) return `<small>Pergunta ${stage}</small><p>${escapeHtml(quiz.questions[stage - 1].text)}</p>`;
+        if (stage === quiz.questions.length + 1) return `<small>Processamento</small><p>Preparando seu diagnóstico...</p>`;
+        if (stage === quiz.questions.length + 2) return `<small>Resultado</small><p>${escapeHtml(quiz.results[0]?.title || "Resultado")}</p>`;
+        return `<small>Publicação</small><p>${escapeHtml(slugFor(quiz))}</p>`;
+      }
+
+      function pageBuilderCanvas(quiz, link, stageNames, activeStage, componentNames) {
+        return `
+            <div class="page-editor-switcher">
+              <button data-action="select-builder-view" data-builder-view="flow">← Voltar ao mapa do funil</button>
+              <strong>Editando: ${escapeHtml(stageNames[activeStage])}</strong>
+            </div>
             <div class="builder-body">
               <aside class="stage-sidebar">
                 <div class="stage-list">
@@ -1116,7 +1167,7 @@
                 </form>
               </aside>
             </div>
-        `);
+        `;
       }
 
       function adminShell(quiz, link, content) {
@@ -1979,6 +2030,15 @@
               state.adminTab = element.dataset.tab || "home";
               render();
             }
+            if (action === "select-builder-view") {
+              state.builderView = element.dataset.builderView || "flow";
+              render();
+            }
+            if (action === "open-stage-editor") {
+              state.adminStage = Number(element.dataset.stage || 0);
+              state.builderView = "page";
+              render();
+            }
             if (action === "select-quiz") {
               state.activeId = element.dataset.id;
               state.adminStage = 0;
@@ -2270,6 +2330,34 @@
           item.addEventListener("dragend", () => document.querySelector(".selected-outline")?.classList.remove("drop-ready", "drag-over"));
         });
 
+        document.querySelectorAll("[data-stage-drop]").forEach((node) => {
+          node.addEventListener("dragover", (event) => {
+            if (!event.dataTransfer.types.includes("text/quiz-component")) return;
+            event.preventDefault();
+            event.stopPropagation();
+            node.classList.add("stage-drop-active");
+          });
+          node.addEventListener("dragleave", () => node.classList.remove("stage-drop-active"));
+          node.addEventListener("drop", (event) => {
+            const type = event.dataTransfer.getData("text/quiz-component");
+            if (!type) return;
+            event.preventDefault();
+            event.stopPropagation();
+            state.adminStage = Number(node.dataset.stageDrop || 0);
+            addStageComponent(type);
+          });
+        });
+
+        const funnelMap = document.querySelector("[data-funnel-map]");
+        if (funnelMap) {
+          funnelMap.addEventListener("contextmenu", (event) => {
+            if (event.target.closest(".funnel-node, button")) return;
+            event.preventDefault();
+            showFunnelContextMenu(event.clientX, event.clientY);
+          });
+          funnelMap.addEventListener("click", () => document.querySelector(".funnel-context-menu")?.remove());
+        }
+
         const canvasDropZone = document.querySelector(".selected-outline");
         if (canvasDropZone) {
           canvasDropZone.addEventListener("dragover", (event) => {
@@ -2291,6 +2379,20 @@
             state.lead = Object.fromEntries(new FormData(leadForm).entries());
           });
         }
+      }
+
+      function showFunnelContextMenu(x, y) {
+        document.querySelector(".funnel-context-menu")?.remove();
+        const menu = document.createElement("div");
+        menu.className = "funnel-context-menu";
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+        menu.innerHTML = `<strong>Adicionar ao funil</strong><button type="button">+ Nova pergunta</button>`;
+        menu.querySelector("button").addEventListener("click", () => {
+          menu.remove();
+          addQuestion();
+        });
+        document.body.appendChild(menu);
       }
 
       function startLoading() {
