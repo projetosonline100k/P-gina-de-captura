@@ -946,6 +946,25 @@ select:focus {
   stroke-dasharray: 7 6;
 }
 
+.connection-drag-overlay {
+  position: fixed;
+  z-index: 5000;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.connection-drag-overlay path {
+  fill: none;
+  stroke: #1677ff;
+  stroke-width: 4;
+  stroke-dasharray: 8 6;
+  stroke-linecap: round;
+  filter: drop-shadow(0 2px 3px rgba(22, 119, 255, 0.28));
+}
+
 .funnel-add-node {
   min-height: 44px;
   padding: 0 18px;
@@ -1941,6 +1960,49 @@ select:focus {
     radial-gradient(circle at 18% 20%, rgba(31, 64, 255, 0.34), transparent 32%),
     linear-gradient(135deg, #05070e 0%, #090d18 58%, #111827 100%);
   box-shadow: 0 16px 36px rgba(4, 8, 18, 0.16);
+}
+
+.flow-date-filter {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 1px solid #e0e6ed;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.flow-date-filter > strong {
+  margin-right: auto;
+}
+
+.flow-date-filter label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #64707d;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.flow-date-filter input {
+  min-height: 38px;
+  padding: 0 9px;
+  border: 1px solid #d7dee7;
+  border-radius: 7px;
+}
+
+.flow-date-filter button {
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid #d7dee7;
+  border-radius: 7px;
+  color: #475569;
+  background: #f8fafc;
+  cursor: pointer;
+  font-weight: 800;
 }
 
 .funnel-panel.empty {

@@ -156,6 +156,8 @@
         adminStage: 0,
         builderView: "flow",
         mapZoom: 0.8,
+        flowDateFrom: "",
+        flowDateTo: "",
         adminResultIndex: 0,
         selectedComponentId: null,
         flowStage: "intro",
@@ -699,6 +701,32 @@
         render();
       }
 
+      function duplicateQuestionPage(index) {
+        const quiz = activeQuiz();
+        const source = quiz.questions[index];
+        if (!source) return;
+        const newIndex = quiz.questions.length;
+        quiz.questions.push(clone(source));
+        quiz.stageComponents ||= {};
+        const copiedComponents = clone(quiz.stageComponents[`question:${index}`] || []);
+        const componentIds = new Map(copiedComponents.map((component) => [component.id, uid("component")]));
+        quiz.stageComponents[`question:${newIndex}`] = copiedComponents.map((component) => ({
+          ...component,
+          id: componentIds.get(component.id),
+          targetIds: (component.targetIds || []).map((target) => target.startsWith("component:")
+            ? `component:${componentIds.get(target.slice(10)) || target.slice(10)}`
+            : target)
+        }));
+        const sourceConnections = (quiz.flowConnections || []).filter((connection) => connection.from === `question:${index}`);
+        sourceConnections.forEach((connection) => quiz.flowConnections.push({ ...connection, from: `question:${newIndex}` }));
+        quiz.flowLayout ||= {};
+        const sourcePosition = nodePosition(quiz, index + 1);
+        quiz.flowLayout[`question:${newIndex}`] = { x: sourcePosition.x + 380, y: sourcePosition.y + 180 };
+        state.adminStage = newIndex + 1;
+        saveQuizzes();
+        render();
+      }
+
       function addOption(questionIndex) {
         const quiz = activeQuiz();
         quiz.questions[questionIndex].options.push({
@@ -1155,7 +1183,7 @@
                   <div class="funnel-node-wrap" data-flow-node="${index}" style="left:${nodePosition(quiz, index).x}px;top:${nodePosition(quiz, index).y}px">
                     <button class="flow-port flow-input-port" data-flow-input="${escapeAttr(stageKey(quiz, index))}" title="Entrada desta etapa"></button>
                     <article class="funnel-node ${index === state.adminStage ? "active" : ""}" data-stage-drop="${index}" data-stage="${index}">
-                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong><div class="funnel-node-tools">${index > 0 && index <= quiz.questions.length ? `<button data-action="move-question-order" data-question="${index - 1}" data-direction="-1" title="Mover pergunta para trás">←</button><button data-action="move-question-order" data-question="${index - 1}" data-direction="1" title="Mover pergunta para frente">→</button>` : ""}<button class="funnel-node-move-handle" title="Mover página">⠿</button></div></div>
+                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong><div class="funnel-node-tools">${index > 0 && index <= quiz.questions.length ? `<button data-action="move-question-order" data-question="${index - 1}" data-direction="-1" title="Mover pergunta para trás">←</button><button data-action="move-question-order" data-question="${index - 1}" data-direction="1" title="Mover pergunta para frente">→</button><button data-action="duplicate-question-page" data-question="${index - 1}" title="Duplicar página">⧉</button>` : ""}<button class="funnel-node-move-handle" title="Mover página">⠿</button></div></div>
                       <div class="funnel-node-preview">${stageThumbnail(quiz, index)}</div>
                       <div class="funnel-node-foot"><span>${(quiz.stageComponents?.[stageKey(quiz, index)] || []).length} componentes</span><button data-action="open-stage-editor" data-stage="${index}">Editar página</button></div>
                     </article>
@@ -1634,8 +1662,8 @@
       }
 
       function flowView(quiz) {
-        const submissions = quizSubmissions(quiz);
-        const funnelRecords = quizFunnelRecords(quiz);
+        const submissions = filterByFlowDate(quizSubmissions(quiz));
+        const funnelRecords = filterByFlowDate(quizFunnelRecords(quiz));
         return `
           <section class="admin-page">
             <div class="admin-page-head">
@@ -1645,12 +1673,28 @@
               </div>
               <button class="secondary-btn" data-action="clear-submissions">Limpar respostas</button>
             </div>
+            <div class="flow-date-filter">
+              <strong>Filtrar por período</strong>
+              <label>De <input type="date" value="${escapeAttr(state.flowDateFrom)}" data-flow-date="from"></label>
+              <label>Até <input type="date" value="${escapeAttr(state.flowDateTo)}" data-flow-date="to"></label>
+              <button type="button" data-action="clear-flow-dates">Limpar filtro</button>
+            </div>
             ${funnelView(quiz, funnelRecords)}
             <div class="flow-map">
               ${quiz.questions.map((question, qIndex) => questionFlowCard(question, qIndex, submissions)).join("")}
             </div>
           </section>
         `;
+      }
+
+      function filterByFlowDate(items) {
+        if (!state.flowDateFrom && !state.flowDateTo) return items;
+        const from = state.flowDateFrom ? new Date(`${state.flowDateFrom}T00:00:00`).getTime() : -Infinity;
+        const to = state.flowDateTo ? new Date(`${state.flowDateTo}T23:59:59.999`).getTime() : Infinity;
+        return items.filter((item) => {
+          const timestamp = new Date(item.createdAt || item.updatedAt || 0).getTime();
+          return timestamp >= from && timestamp <= to;
+        });
       }
 
       function leadsView(quiz) {
@@ -2208,6 +2252,9 @@
             if (action === "move-question-order") {
               moveQuestionOrder(Number(element.dataset.question), Number(element.dataset.direction));
             }
+            if (action === "duplicate-question-page") {
+              duplicateQuestionPage(Number(element.dataset.question));
+            }
             if (action === "open-stage-editor") {
               state.adminStage = Number(element.dataset.stage || 0);
               state.builderView = "page";
@@ -2254,6 +2301,11 @@
               saveSubmissions();
               saveFunnel();
               deleteRemoteQuizData(quizId);
+              render();
+            }
+            if (action === "clear-flow-dates") {
+              state.flowDateFrom = "";
+              state.flowDateTo = "";
               render();
             }
             if (action === "export-submissions") exportSubmissions(activeQuiz());
@@ -2355,6 +2407,14 @@
             if (input.dataset.field === "slug") target.slug = slugify(input.value);
             saveQuizzes();
             refreshAdminCanvas();
+          });
+        });
+
+        document.querySelectorAll("[data-flow-date]").forEach((input) => {
+          input.addEventListener("change", () => {
+            if (input.dataset.flowDate === "from") state.flowDateFrom = input.value;
+            if (input.dataset.flowDate === "to") state.flowDateTo = input.value;
+            render();
           });
         });
 
@@ -2610,31 +2670,31 @@
           port.addEventListener("pointerdown", (event) => {
             event.preventDefault();
             event.stopPropagation();
-            const track = port.closest(".funnel-node-track");
-            const layer = track.querySelector("[data-connection-layer]");
             const from = port.dataset.flowOutput;
             const option = port.dataset.flowOption === "" ? null : Number(port.dataset.flowOption);
             const existing = flowConnectionFor(activeQuiz(), from, option);
-            const trackRect = track.getBoundingClientRect();
             const portRect = port.getBoundingClientRect();
-            const zoom = state.mapZoom || 1;
-            const start = { x: (portRect.left + portRect.width / 2 - trackRect.left) / zoom, y: (portRect.top + portRect.height / 2 - trackRect.top) / zoom };
+            const start = { x: portRect.left + portRect.width / 2, y: portRect.top + portRect.height / 2 };
             let moved = false;
+            const overlay = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            overlay.classList.add("connection-drag-overlay");
+            overlay.setAttribute("viewBox", `0 0 ${window.innerWidth} ${window.innerHeight}`);
             const temporary = document.createElementNS("http://www.w3.org/2000/svg", "path");
             temporary.classList.add("temporary-connection");
-            layer.appendChild(temporary);
+            overlay.appendChild(temporary);
+            document.body.appendChild(overlay);
             port.setPointerCapture(event.pointerId);
             const move = (moveEvent) => {
               moved = true;
-              const x = (moveEvent.clientX - trackRect.left) / zoom;
-              const y = (moveEvent.clientY - trackRect.top) / zoom;
+              const x = moveEvent.clientX;
+              const y = moveEvent.clientY;
               const middle = (start.x + x) / 2;
               temporary.setAttribute("d", `M ${start.x} ${start.y} C ${middle} ${start.y}, ${middle} ${y}, ${x} ${y}`);
             };
             const end = (upEvent) => {
               port.removeEventListener("pointermove", move);
               port.removeEventListener("pointerup", end);
-              temporary.remove();
+              overlay.remove();
               const input = document.elementFromPoint(upEvent.clientX, upEvent.clientY)?.closest("[data-flow-input]");
               if (input) {
                 activeQuiz().flowConnections = (activeQuiz().flowConnections || []).filter((connection) => !(connection.from === from && (connection.option ?? null) === (option ?? null)));
