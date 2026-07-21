@@ -506,6 +506,7 @@
         if (!clean.questions.length) clean.questions = clone(defaultQuiz.questions);
         if (!clean.results.length) clean.results = clone(defaultQuiz.results);
         clean.stageComponents = clean.stageComponents || {};
+        if (!Array.isArray(clean.flowConnections)) clean.flowConnections = [];
         Object.values(clean.stageComponents).flat().forEach((component) => {
           if (component?.type === "Timer") {
             component.action = "show";
@@ -654,6 +655,7 @@
 
       function addQuestion() {
         const quiz = activeQuiz();
+        const previousCount = quiz.questions.length;
         quiz.questions.push({
           text: "Nova pergunta",
           options: [
@@ -661,6 +663,14 @@
             { text: "Opcao B", profile: "economia", weight: 2 }
           ]
         });
+        if ((quiz.flowConnections || []).length) {
+          const previousKey = `question:${previousCount - 1}`;
+          const newKey = `question:${previousCount}`;
+          quiz.flowConnections.forEach((connection) => {
+            if (connection.from === previousKey && connection.to === "loading") connection.to = newKey;
+          });
+          quiz.questions[previousCount].options.forEach((_, option) => quiz.flowConnections.push({ from: newKey, to: "loading", option }));
+        }
         state.adminStage = quiz.questions.length;
         saveQuizzes();
         render();
@@ -690,19 +700,28 @@
       }
 
       function addOption(questionIndex) {
-        activeQuiz().questions[questionIndex].options.push({
+        const quiz = activeQuiz();
+        quiz.questions[questionIndex].options.push({
           text: "Nova opcao",
           profile: "planejador",
           weight: 1
         });
+        const from = `question:${questionIndex}`;
+        const example = (quiz.flowConnections || []).find((connection) => connection.from === from);
+        if (example) quiz.flowConnections.push({ from, to: example.to, option: quiz.questions[questionIndex].options.length - 1 });
         saveQuizzes();
         render();
       }
 
       function removeOption(questionIndex, optionIndex) {
-        const options = activeQuiz().questions[questionIndex].options;
+        const quiz = activeQuiz();
+        const options = quiz.questions[questionIndex].options;
         if (options.length === 1) return;
         options.splice(optionIndex, 1);
+        const from = `question:${questionIndex}`;
+        quiz.flowConnections = (quiz.flowConnections || [])
+          .filter((connection) => !(connection.from === from && connection.option === optionIndex))
+          .map((connection) => connection.from === from && Number(connection.option) > optionIndex ? { ...connection, option: connection.option - 1 } : connection);
         saveQuizzes();
         render();
       }
@@ -921,18 +940,30 @@
           const track = layer?.closest(".funnel-node-track");
           if (!layer || !track) return;
           const quiz = activeQuiz();
-          const nodes = [...track.querySelectorAll("[data-flow-node]")];
           layer.setAttribute("viewBox", `0 0 ${track.scrollWidth} ${track.scrollHeight}`);
-          layer.innerHTML = nodes.slice(1).map((node, index) => {
-            const targetStage = index + 1;
-            if ((quiz.flowDisconnected || []).includes(stageKey(quiz, targetStage))) return "";
-            const previous = nodes[index];
-            const x1 = previous.offsetLeft + previous.offsetWidth;
-            const y1 = previous.offsetTop + previous.offsetHeight / 2;
-            const x2 = node.offsetLeft;
-            const y2 = node.offsetTop + node.offsetHeight / 2;
+          const pointInTrack = (element) => {
+            let x = element.offsetLeft + element.offsetWidth / 2;
+            let y = element.offsetTop + element.offsetHeight / 2;
+            let parent = element.offsetParent;
+            while (parent && parent !== track) {
+              x += parent.offsetLeft;
+              y += parent.offsetTop;
+              parent = parent.offsetParent;
+            }
+            return { x, y };
+          };
+          layer.innerHTML = (quiz.flowConnections || []).map((connection) => {
+            const output = [...track.querySelectorAll("[data-flow-output]")].find((item) => item.dataset.flowOutput === connection.from && (item.dataset.flowOption === "" ? null : Number(item.dataset.flowOption)) === (connection.option ?? null));
+            const input = [...track.querySelectorAll("[data-flow-input]")].find((item) => item.dataset.flowInput === connection.to);
+            if (!output || !input) return "";
+            const start = pointInTrack(output);
+            const end = pointInTrack(input);
+            const x1 = start.x;
+            const y1 = start.y;
+            const x2 = end.x;
+            const y2 = end.y;
             const middle = (x1 + x2) / 2;
-            return `<path d="M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}"></path>`;
+            return `<path data-connection-from="${escapeAttr(connection.from)}" data-connection-option="${connection.option ?? ""}" d="M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}"></path>`;
           }).join("");
         });
       }
@@ -1101,6 +1132,7 @@
       function flowBuilderCanvas(quiz, stageNames, componentNames) {
         quiz.flowLayout ||= {};
         quiz.flowDisconnected ||= [];
+        ensureFlowConnections(quiz);
         return `
           <div class="flow-builder-workspace">
             <div class="flow-component-tray">
@@ -1121,11 +1153,13 @@
                 <svg class="funnel-connection-layer" data-connection-layer aria-hidden="true"></svg>
                 ${stageNames.map((name, index) => `
                   <div class="funnel-node-wrap" data-flow-node="${index}" style="left:${nodePosition(quiz, index).x}px;top:${nodePosition(quiz, index).y}px">
+                    <button class="flow-port flow-input-port" data-flow-input="${escapeAttr(stageKey(quiz, index))}" title="Entrada desta etapa"></button>
                     <article class="funnel-node ${index === state.adminStage ? "active" : ""}" data-stage-drop="${index}" data-stage="${index}">
-                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong><div class="funnel-node-tools">${index > 0 && index <= quiz.questions.length ? `<button data-action="move-question-order" data-question="${index - 1}" data-direction="-1" title="Mover pergunta para trás">←</button><button data-action="move-question-order" data-question="${index - 1}" data-direction="1" title="Mover pergunta para frente">→</button>` : ""}<button class="funnel-node-move-handle" title="Mover página">⠿</button>${index ? `<button data-action="toggle-stage-connection" data-stage="${index}" title="Conectar ou desconectar">${quiz.flowDisconnected.includes(stageKey(quiz, index)) ? "⛓" : "↝"}</button>` : ""}</div></div>
+                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong><div class="funnel-node-tools">${index > 0 && index <= quiz.questions.length ? `<button data-action="move-question-order" data-question="${index - 1}" data-direction="-1" title="Mover pergunta para trás">←</button><button data-action="move-question-order" data-question="${index - 1}" data-direction="1" title="Mover pergunta para frente">→</button>` : ""}<button class="funnel-node-move-handle" title="Mover página">⠿</button></div></div>
                       <div class="funnel-node-preview">${stageThumbnail(quiz, index)}</div>
-                      <div class="funnel-node-foot"><span>${(quiz.stageComponents?.[stageKey(quiz, index)] || []).length} componentes</span><b>Edite diretamente acima</b></div>
+                      <div class="funnel-node-foot"><span>${(quiz.stageComponents?.[stageKey(quiz, index)] || []).length} componentes</span><button data-action="open-stage-editor" data-stage="${index}">Editar página</button></div>
                     </article>
+                    <div class="flow-output-ports">${stageOutputPorts(quiz, index)}</div>
                   </div>
                 `).join("")}
               </div>
@@ -1133,6 +1167,65 @@
             </div>
           </div>
         `;
+      }
+
+      function ensureFlowConnections(quiz) {
+        const keys = ["intro", ...quiz.questions.map((_, index) => `question:${index}`), "loading", "result", "publication"];
+        if (!quiz.flowConnections.length) {
+          quiz.flowConnections = keys.slice(0, -1).flatMap((from, index) => {
+            if (!from.startsWith("question:")) return [{ from, to: keys[index + 1], option: null }];
+            const questionIndex = Number(from.split(":")[1]);
+            return quiz.questions[questionIndex].options.map((_, option) => ({ from, to: keys[index + 1], option }));
+          });
+          return;
+        }
+        const genericQuestionConnections = quiz.flowConnections.filter((connection) => connection.from.startsWith("question:") && connection.option == null);
+        genericQuestionConnections.forEach((generic) => {
+          const questionIndex = Number(generic.from.split(":")[1]);
+          quiz.flowConnections = quiz.flowConnections.filter((connection) => connection !== generic);
+          quiz.questions[questionIndex]?.options.forEach((_, option) => quiz.flowConnections.push({ from: generic.from, to: generic.to, option }));
+        });
+      }
+
+      function stageOutputPorts(quiz, stage) {
+        const from = stageKey(quiz, stage);
+        if (from === "publication") return "";
+        if (from.startsWith("question:")) {
+          const questionIndex = Number(from.split(":")[1]);
+          return quiz.questions[questionIndex].options.map((option, index) => `
+            <button class="flow-port flow-output-port ${flowConnectionFor(quiz, from, index) ? "connected" : ""}" data-flow-output="${escapeAttr(from)}" data-flow-option="${index}" title="Resposta ${index + 1}: ${escapeAttr(option.text)}"><span>${index + 1}</span></button>
+          `).join("");
+        }
+        return `<button class="flow-port flow-output-port ${flowConnectionFor(quiz, from, null) ? "connected" : ""}" data-flow-output="${escapeAttr(from)}" data-flow-option="" title="Puxar conexão"></button>`;
+      }
+
+      function flowConnectionFor(quiz, from, option) {
+        return (quiz.flowConnections || []).find((connection) => connection.from === from && (connection.option ?? null) === (option ?? null));
+      }
+
+      function applyFlowTarget(quiz, target, shouldRecordSubmission = false) {
+        if (!target) return false;
+        if (target.startsWith("question:")) {
+          state.flowStage = "quiz";
+          state.previewStep = Math.max(0, Math.min(quiz.questions.length - 1, Number(target.split(":")[1])));
+          return true;
+        }
+        if (target === "loading") {
+          if (shouldRecordSubmission) recordSubmission(quiz);
+          state.flowStage = "loading";
+          state.loadingProgress = 0;
+          return true;
+        }
+        if (target === "result" || target === "publication") {
+          if (shouldRecordSubmission) recordSubmission(quiz);
+          state.flowStage = "result";
+          return true;
+        }
+        if (target === "intro") {
+          state.flowStage = "intro";
+          return true;
+        }
+        return false;
       }
 
       function nodePosition(quiz, index) {
@@ -2208,8 +2301,11 @@
               } else if (action === "name-next") {
                 setCurrentRunIgnored(quiz, false);
               }
-              state.flowStage = "quiz";
-              state.previewStep = 0;
+              const introConnection = flowConnectionFor(quiz, "intro", null);
+              if (!applyFlowTarget(quiz, introConnection?.to)) {
+                state.flowStage = "quiz";
+                state.previewStep = 0;
+              }
               state.answers = [];
               state.submittedThisRun = false;
               render();
@@ -2218,13 +2314,20 @@
               state.adminStage = Math.min(state.adminStage + 1, quiz.questions.length + 1);
               render();
             } else if (action === "preview-answer" || action === "answer") {
-              state.answers[state.previewStep] = Number(element.dataset.answer);
-              if (state.previewStep >= quiz.questions.length - 1) {
-                if (action === "answer") recordSubmission(quiz);
-                state.flowStage = "loading";
-                state.loadingProgress = 0;
-              } else {
-                state.previewStep += 1;
+              const answeredStep = state.previewStep;
+              const answerIndex = Number(element.dataset.answer);
+              state.answers[answeredStep] = answerIndex;
+              const from = `question:${answeredStep}`;
+              const connection = flowConnectionFor(quiz, from, answerIndex) || flowConnectionFor(quiz, from, null);
+              const shouldRecord = action === "answer" && !connection?.to?.startsWith("question:");
+              if (!applyFlowTarget(quiz, connection?.to, shouldRecord) && !(quiz.flowConnections || []).length) {
+                if (answeredStep >= quiz.questions.length - 1) {
+                  if (action === "answer") recordSubmission(quiz);
+                  state.flowStage = "loading";
+                  state.loadingProgress = 0;
+                } else {
+                  state.previewStep += 1;
+                }
               }
               render();
             }
@@ -2503,6 +2606,50 @@
           });
         });
 
+        document.querySelectorAll("[data-flow-output]").forEach((port) => {
+          port.addEventListener("pointerdown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const track = port.closest(".funnel-node-track");
+            const layer = track.querySelector("[data-connection-layer]");
+            const from = port.dataset.flowOutput;
+            const option = port.dataset.flowOption === "" ? null : Number(port.dataset.flowOption);
+            const existing = flowConnectionFor(activeQuiz(), from, option);
+            const trackRect = track.getBoundingClientRect();
+            const portRect = port.getBoundingClientRect();
+            const zoom = state.mapZoom || 1;
+            const start = { x: (portRect.left + portRect.width / 2 - trackRect.left) / zoom, y: (portRect.top + portRect.height / 2 - trackRect.top) / zoom };
+            let moved = false;
+            const temporary = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            temporary.classList.add("temporary-connection");
+            layer.appendChild(temporary);
+            port.setPointerCapture(event.pointerId);
+            const move = (moveEvent) => {
+              moved = true;
+              const x = (moveEvent.clientX - trackRect.left) / zoom;
+              const y = (moveEvent.clientY - trackRect.top) / zoom;
+              const middle = (start.x + x) / 2;
+              temporary.setAttribute("d", `M ${start.x} ${start.y} C ${middle} ${start.y}, ${middle} ${y}, ${x} ${y}`);
+            };
+            const end = (upEvent) => {
+              port.removeEventListener("pointermove", move);
+              port.removeEventListener("pointerup", end);
+              temporary.remove();
+              const input = document.elementFromPoint(upEvent.clientX, upEvent.clientY)?.closest("[data-flow-input]");
+              if (input) {
+                activeQuiz().flowConnections = (activeQuiz().flowConnections || []).filter((connection) => !(connection.from === from && (connection.option ?? null) === (option ?? null)));
+                activeQuiz().flowConnections.push({ from, to: input.dataset.flowInput, option });
+                saveQuizzes();
+                render();
+              } else if (!moved && existing) {
+                showConnectionContextMenu(upEvent.clientX, upEvent.clientY, from, option);
+              }
+            };
+            port.addEventListener("pointermove", move);
+            port.addEventListener("pointerup", end);
+          });
+        });
+
         const funnelMap = document.querySelector("[data-funnel-map]");
         if (funnelMap) {
           funnelMap.addEventListener("contextmenu", (event) => {
@@ -2550,6 +2697,22 @@
         document.body.appendChild(menu);
       }
 
+      function showConnectionContextMenu(x, y, from, option) {
+        document.querySelector(".funnel-context-menu")?.remove();
+        const menu = document.createElement("div");
+        menu.className = "funnel-context-menu";
+        menu.style.left = `${x}px`;
+        menu.style.top = `${y}px`;
+        menu.innerHTML = `<strong>Conexão</strong><button type="button">Desconectar linha</button>`;
+        menu.querySelector("button").addEventListener("click", () => {
+          activeQuiz().flowConnections = (activeQuiz().flowConnections || []).filter((connection) => !(connection.from === from && (connection.option ?? null) === (option ?? null)));
+          saveQuizzes();
+          menu.remove();
+          render();
+        });
+        document.body.appendChild(menu);
+      }
+
       function startLoading() {
         if (loadingTimer) return;
         loadingTimer = window.setInterval(() => {
@@ -2562,7 +2725,9 @@
           if (state.loadingProgress >= 100) {
             window.clearInterval(loadingTimer);
             loadingTimer = null;
-            state.flowStage = "result";
+            const quiz = getPublicQuiz() || activeQuiz();
+            const connection = flowConnectionFor(quiz, "loading", null);
+            if (!applyFlowTarget(quiz, connection?.to)) state.flowStage = "result";
           }
           render();
         }, 1000);

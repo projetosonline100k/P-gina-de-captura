@@ -870,6 +870,82 @@ select:focus {
   color: #2d76df;
 }
 
+.funnel-node-foot button {
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 6px;
+  color: #fff;
+  background: #2d76df;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.flow-port {
+  position: absolute;
+  z-index: 12;
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  padding: 0;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  background: #94a3b8;
+  box-shadow: 0 0 0 2px #64748b, 0 4px 10px rgba(15, 23, 42, 0.2);
+  cursor: crosshair;
+  touch-action: none;
+}
+
+.flow-input-port {
+  left: -11px;
+  top: calc(50% - 11px);
+  background: #fff;
+}
+
+.flow-output-ports {
+  position: absolute;
+  z-index: 13;
+  top: 72px;
+  right: -13px;
+  bottom: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  flex-direction: column;
+}
+
+.flow-output-port {
+  position: relative;
+  flex: 0 0 22px;
+  background: #fff;
+}
+
+.flow-output-port.connected {
+  background: #2d76df;
+  box-shadow: 0 0 0 2px #1d5fbd, 0 4px 10px rgba(45, 118, 223, 0.28);
+}
+
+.flow-output-port span {
+  position: absolute;
+  right: 24px;
+  display: grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  border-radius: 5px;
+  color: #fff;
+  background: #334155;
+  font-size: 10px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.funnel-connection-layer path.temporary-connection {
+  stroke: #2d76df;
+  stroke-dasharray: 7 6;
+}
+
 .funnel-add-node {
   min-height: 44px;
   padding: 0 18px;
