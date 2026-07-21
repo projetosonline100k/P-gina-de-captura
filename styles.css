@@ -640,42 +640,67 @@ select:focus {
 }
 
 .funnel-node-track {
-  display: flex;
-  align-items: flex-start;
-  width: max-content;
-  min-width: 100%;
-  padding: 32px 10px 48px;
+  position: relative;
+  width: 4200px;
+  height: 1200px;
+  zoom: var(--map-zoom, 0.8);
 }
 
 .funnel-node-wrap {
+  position: absolute;
+  z-index: 2;
+}
+
+.funnel-connection-layer {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.funnel-connection-layer path {
+  fill: none;
+  stroke: #7f8fa3;
+  stroke-width: 4;
+  stroke-dasharray: 12 10;
+  stroke-linecap: round;
+}
+
+.funnel-map-controls {
+  position: sticky;
+  z-index: 20;
+  top: 12px;
+  left: calc(100% - 250px);
   display: flex;
   align-items: center;
+  width: max-content;
+  gap: 6px;
+  padding: 6px;
+  border: 1px solid #dce3eb;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 20px rgba(17, 32, 52, 0.12);
 }
 
-.funnel-node-wrap:nth-child(even) {
-  margin-top: 190px;
-}
-
-.funnel-connector {
-  display: grid;
-  width: 70px;
-  place-items: center;
-  height: 2px;
-  margin: 0 10px;
-  border-top: 3px dashed #7f8fa3;
-  color: transparent;
-  font-size: 0;
+.funnel-map-controls button {
+  min-width: 34px;
+  height: 34px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  color: #334155;
+  background: #edf1f5;
+  cursor: pointer;
   font-weight: 900;
 }
 
-.funnel-node-wrap:nth-child(even) .funnel-connector {
-  width: 105px;
-  transform: translateY(-95px) rotate(38deg);
-}
-
-.funnel-node-wrap:nth-child(odd):not(:first-child) .funnel-connector {
-  width: 105px;
-  transform: translateY(95px) rotate(-38deg);
+.funnel-map-controls strong {
+  min-width: 48px;
+  text-align: center;
+  font-size: 12px;
 }
 
 .funnel-node {
@@ -734,6 +759,29 @@ select:focus {
   flex: 1;
 }
 
+.funnel-node-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.funnel-node-tools button {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  color: #526170;
+  background: #edf1f5;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.funnel-node-move-handle {
+  cursor: grab !important;
+  touch-action: none;
+}
+
 .funnel-node-preview {
   position: relative;
   width: 100%;
@@ -747,14 +795,14 @@ select:focus {
   inset: 0;
   overflow: hidden;
   background: #fff;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .funnel-page-preview-inner {
   width: 1040px;
   min-height: 1700px;
   zoom: 0.294;
-  pointer-events: none;
+  pointer-events: auto;
   transform-origin: top left;
 }
 
@@ -772,6 +820,10 @@ select:focus {
 }
 
 .funnel-page-preview-inner .custom-components.empty-component-position {
+  display: none;
+}
+
+.funnel-page-preview-inner .timer-component {
   display: none;
 }
 
@@ -2478,6 +2530,10 @@ select:focus {
   color: #5d636b;
   font-size: 22px;
   line-height: 1.45;
+}
+
+.benefit-box li b {
+  font-weight: inherit;
 }
 
 .benefit-box li:last-child {

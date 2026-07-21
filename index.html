@@ -155,6 +155,7 @@
         adminTab: "home",
         adminStage: 0,
         builderView: "flow",
+        mapZoom: 0.8,
         adminResultIndex: 0,
         selectedComponentId: null,
         flowStage: "intro",
@@ -675,6 +676,19 @@
         render();
       }
 
+      function moveQuestionOrder(index, direction) {
+        const quiz = activeQuiz();
+        const target = index + direction;
+        if (target < 0 || target >= quiz.questions.length) return;
+        [quiz.questions[index], quiz.questions[target]] = [quiz.questions[target], quiz.questions[index]];
+        quiz.stageComponents ||= {};
+        const currentKey = `question:${index}`;
+        const targetKey = `question:${target}`;
+        [quiz.stageComponents[currentKey], quiz.stageComponents[targetKey]] = [quiz.stageComponents[targetKey] || [], quiz.stageComponents[currentKey] || []];
+        saveQuizzes();
+        render();
+      }
+
       function addOption(questionIndex) {
         activeQuiz().questions[questionIndex].options.push({
           text: "Nova opcao",
@@ -897,7 +911,30 @@
         } else {
           lastPublicScrollKey = "";
           fitAdminCanvas();
+          renderFunnelConnections();
         }
+      }
+
+      function renderFunnelConnections() {
+        window.requestAnimationFrame(() => {
+          const layer = document.querySelector("[data-connection-layer]");
+          const track = layer?.closest(".funnel-node-track");
+          if (!layer || !track) return;
+          const quiz = activeQuiz();
+          const nodes = [...track.querySelectorAll("[data-flow-node]")];
+          layer.setAttribute("viewBox", `0 0 ${track.scrollWidth} ${track.scrollHeight}`);
+          layer.innerHTML = nodes.slice(1).map((node, index) => {
+            const targetStage = index + 1;
+            if ((quiz.flowDisconnected || []).includes(stageKey(quiz, targetStage))) return "";
+            const previous = nodes[index];
+            const x1 = previous.offsetLeft + previous.offsetWidth;
+            const y1 = previous.offsetTop + previous.offsetHeight / 2;
+            const x2 = node.offsetLeft;
+            const y2 = node.offsetTop + node.offsetHeight / 2;
+            const middle = (x1 + x2) / 2;
+            return `<path d="M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}"></path>`;
+          }).join("");
+        });
       }
 
       function fitAdminCanvas() {
@@ -926,6 +963,10 @@
         frame.querySelectorAll("[data-action]").forEach((element) => {
           element.addEventListener("click", (event) => {
             const action = element.dataset.action;
+            if (element.closest(".funnel-page-preview") && action?.startsWith("preview-")) {
+              event.preventDefault();
+              return;
+            }
             if (action === "preview-start") state.adminStage = Math.min(1, activeQuiz().questions.length);
             if (action === "preview-answer") state.adminStage = Math.min(state.adminStage + 1, activeQuiz().questions.length + 1);
             if (action === "preview-reset") state.adminStage = 0;
@@ -1058,6 +1099,8 @@
       }
 
       function flowBuilderCanvas(quiz, stageNames, componentNames) {
+        quiz.flowLayout ||= {};
+        quiz.flowDisconnected ||= [];
         return `
           <div class="flow-builder-workspace">
             <div class="flow-component-tray">
@@ -1068,14 +1111,20 @@
             </div>
             <div class="funnel-map" data-funnel-map>
               <div class="funnel-map-hint">Clique em uma etapa para editar · botão direito no espaço vazio para adicionar</div>
-              <div class="funnel-node-track">
+              <div class="funnel-map-controls">
+                <button data-action="map-zoom-out" title="Diminuir zoom">−</button>
+                <strong>${Math.round(state.mapZoom * 100)}%</strong>
+                <button data-action="map-zoom-in" title="Aumentar zoom">+</button>
+                <button data-action="map-zoom-reset" title="Restaurar zoom">Ajustar</button>
+              </div>
+              <div class="funnel-node-track" style="--map-zoom:${state.mapZoom}">
+                <svg class="funnel-connection-layer" data-connection-layer aria-hidden="true"></svg>
                 ${stageNames.map((name, index) => `
-                  <div class="funnel-node-wrap">
-                    ${index ? `<span class="funnel-connector" aria-hidden="true">→</span>` : ""}
-                    <article class="funnel-node ${index === state.adminStage ? "active" : ""}" data-stage-drop="${index}" data-action="open-stage-editor" data-stage="${index}">
-                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong></div>
+                  <div class="funnel-node-wrap" data-flow-node="${index}" style="left:${nodePosition(quiz, index).x}px;top:${nodePosition(quiz, index).y}px">
+                    <article class="funnel-node ${index === state.adminStage ? "active" : ""}" data-stage-drop="${index}" data-stage="${index}">
+                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong><div class="funnel-node-tools">${index > 0 && index <= quiz.questions.length ? `<button data-action="move-question-order" data-question="${index - 1}" data-direction="-1" title="Mover pergunta para trás">←</button><button data-action="move-question-order" data-question="${index - 1}" data-direction="1" title="Mover pergunta para frente">→</button>` : ""}<button class="funnel-node-move-handle" title="Mover página">⠿</button>${index ? `<button data-action="toggle-stage-connection" data-stage="${index}" title="Conectar ou desconectar">${quiz.flowDisconnected.includes(stageKey(quiz, index)) ? "⛓" : "↝"}</button>` : ""}</div></div>
                       <div class="funnel-node-preview">${stageThumbnail(quiz, index)}</div>
-                      <div class="funnel-node-foot"><span>${(quiz.stageComponents?.[stageKey(quiz, index)] || []).length} componentes</span><b>Editar →</b></div>
+                      <div class="funnel-node-foot"><span>${(quiz.stageComponents?.[stageKey(quiz, index)] || []).length} componentes</span><b>Edite diretamente acima</b></div>
                     </article>
                   </div>
                 `).join("")}
@@ -1086,14 +1135,19 @@
         `;
       }
 
+      function nodePosition(quiz, index) {
+        const key = stageKey(quiz, index);
+        return quiz.flowLayout?.[key] || { x: 50 + index * 400, y: index % 2 ? 260 : 40 };
+      }
+
       function stageThumbnail(quiz, stage) {
         let page = "";
-        if (stage === 0) page = introView(quiz, false);
-        else if (stage > 0 && stage <= quiz.questions.length) page = questionView(quiz, stage - 1, false);
-        else if (stage === quiz.questions.length + 1) page = loadingView(quiz, false);
-        else if (stage === quiz.questions.length + 2) page = resultView(quiz, quiz.results[0] || defaultQuiz.results[0], false);
+        if (stage === 0) page = introView(quiz, true);
+        else if (stage > 0 && stage <= quiz.questions.length) page = questionView(quiz, stage - 1, true);
+        else if (stage === quiz.questions.length + 1) page = loadingView(quiz, true);
+        else if (stage === quiz.questions.length + 2) page = resultView(quiz, quiz.results[0] || defaultQuiz.results[0], true);
         else page = `<section class="map-publication-page"><span>✓</span><h2>Quiz pronto para publicar</h2><p>${escapeHtml(shareUrl(quiz))}</p></section>`;
-        return `<div class="funnel-page-preview" aria-hidden="true"><div class="funnel-page-preview-inner public-shell" inert>${page}</div></div>`;
+        return `<div class="funnel-page-preview"><div class="funnel-page-preview-inner public-shell">${page}</div></div>`;
       }
 
       function pageBuilderCanvas(quiz, link, stageNames, activeStage, componentNames) {
@@ -1855,13 +1909,13 @@
             <div class="intro-center">
               ${stageComponentsView(quiz, "intro", preview, 0)}
               <p class="app-kicker">${escapeHtml(quiz.badge || "Aplicativo inteligente")}</p>
-              <h2 data-delay-target="intro-title">${escapeHtml(quiz.title)}</h2>
+              <h2 data-delay-target="intro-title" contenteditable="${preview ? "true" : "false"}" data-map-field="title">${escapeHtml(quiz.title)}</h2>
               ${stageComponentsView(quiz, "intro", preview, 1)}
               <div class="intro-hero-frame" data-delay-target="intro-image">
                 <img class="intro-hero-image" src="assets/Fotodoquiz.png" alt="Viajante mostrando o aplicativo de organização de viagem">
               </div>
               ${stageComponentsView(quiz, "intro", preview, 2)}
-              <p data-delay-target="intro-subtitle">${escapeHtml(quiz.subtitle)}</p>
+              <p data-delay-target="intro-subtitle" contenteditable="${preview ? "true" : "false"}" data-map-field="subtitle">${escapeHtml(quiz.subtitle)}</p>
               ${stageComponentsView(quiz, "intro", preview, 3)}
               <button class="diagnostic-btn" data-delay-target="intro-cta" data-action="${preview ? "preview-start" : "start-quiz"}">Começar o diagnóstico <span>→</span></button>
               ${stageComponentsView(quiz, "intro", preview, 4)}
@@ -1936,13 +1990,13 @@
             ${progressSegments(quiz.questions.length, step)}
             <div class="question-block">
               ${stageComponentsView(quiz, `question:${step}`, preview, 0)}
-              <h3 data-delay-target="question-title">${escapeHtml(questionText)}</h3>
+              <h3 data-delay-target="question-title" contenteditable="${preview ? "true" : "false"}" data-map-question="${step}">${escapeHtml(questionText)}</h3>
               ${stageComponentsView(quiz, `question:${step}`, preview, 1)}
               ${stageComponentsView(quiz, `question:${step}`, preview, 2)}
               <div class="answer-stack" data-delay-target="question-options">
                 ${question.options.map((option, index) => `
                   <button class="answer-btn ${answeredIndex === index ? "selected" : ""}" data-action="${preview ? "preview-answer" : "answer"}" data-answer="${index}">
-                    <span>${escapeHtml(option.text)}</span>
+                    <span contenteditable="${preview ? "true" : "false"}" data-map-option="${step}:${index}">${escapeHtml(option.text)}</span>
                     <b>→</b>
                   </button>
                 `).join("")}
@@ -1973,6 +2027,7 @@
       }
 
       function resultView(quiz, result, preview) {
+        const resultIndex = Math.max(0, quiz.results.indexOf(result));
         const titleParts = String(result.title || "").split(" ");
         const lastWord = titleParts.pop() || "";
         const firstPart = titleParts.join(" ");
@@ -1982,9 +2037,9 @@
               ${stageComponentsView(quiz, "result", preview, 0)}
               <div class="plane">✈️</div>
               <p class="result-kicker">Seu perfil</p>
-              <h2 data-delay-target="result-title">${escapeHtml(firstPart)} <span>${escapeHtml(lastWord)}</span></h2>
+              <h2 data-delay-target="result-title" contenteditable="${preview ? "true" : "false"}" data-map-result="${resultIndex}" data-map-result-key="title">${escapeHtml(firstPart)} <span>${escapeHtml(lastWord)}</span></h2>
               ${stageComponentsView(quiz, "result", preview, 1)}
-              <div class="diagnosis-box" data-delay-target="result-diagnosis">
+              <div class="diagnosis-box" data-delay-target="result-diagnosis" contenteditable="${preview ? "true" : "false"}" data-map-result="${resultIndex}" data-map-result-key="text">
                 ${escapeHtml(result.text).split(". ").filter(Boolean).map((part) => `<p>${part.replace(/\.$/, "")}.</p>`).join("")}
               </div>
               ${stageComponentsView(quiz, "result", preview, 2)}
@@ -1996,7 +2051,7 @@
               </div>
               ${stageComponentsView(quiz, "result", preview, 3)}
               <ul class="benefit-box" data-delay-target="result-benefits">
-                ${(result.bullets || []).map((item) => `<li><span>✓</span>${escapeHtml(item)}</li>`).join("")}
+                ${(result.bullets || []).map((item, bulletIndex) => `<li><span>✓</span><b contenteditable="${preview ? "true" : "false"}" data-map-result="${resultIndex}" data-map-bullet="${bulletIndex}">${escapeHtml(item)}</b></li>`).join("")}
               </ul>
               ${stageComponentsView(quiz, "result", preview, 4)}
               <a class="diagnostic-btn result-cta" data-delay-target="result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener" data-action="${preview ? "preview-checkout-click" : "checkout-click"}">
@@ -2035,6 +2090,30 @@
             if (action === "select-builder-view") {
               state.builderView = element.dataset.builderView || "flow";
               render();
+            }
+            if (action === "map-zoom-in") {
+              state.mapZoom = Math.min(1.5, state.mapZoom + 0.1);
+              render();
+            }
+            if (action === "map-zoom-out") {
+              state.mapZoom = Math.max(0.35, state.mapZoom - 0.1);
+              render();
+            }
+            if (action === "map-zoom-reset") {
+              state.mapZoom = 0.8;
+              render();
+            }
+            if (action === "toggle-stage-connection") {
+              const key = stageKey(activeQuiz(), Number(element.dataset.stage));
+              activeQuiz().flowDisconnected ||= [];
+              activeQuiz().flowDisconnected = activeQuiz().flowDisconnected.includes(key)
+                ? activeQuiz().flowDisconnected.filter((item) => item !== key)
+                : [...activeQuiz().flowDisconnected, key];
+              saveQuizzes();
+              render();
+            }
+            if (action === "move-question-order") {
+              moveQuestionOrder(Number(element.dataset.question), Number(element.dataset.direction));
             }
             if (action === "open-stage-editor") {
               state.adminStage = Number(element.dataset.stage || 0);
@@ -2174,6 +2253,47 @@
             saveQuizzes();
             refreshAdminCanvas();
           });
+        });
+
+        document.querySelectorAll("[data-map-field]").forEach((element) => {
+          element.addEventListener("input", () => {
+            activeQuiz()[element.dataset.mapField] = element.textContent.trim();
+            saveQuizzes();
+          });
+          element.addEventListener("click", (event) => event.stopPropagation());
+        });
+
+        document.querySelectorAll("[data-map-question]").forEach((element) => {
+          element.addEventListener("input", () => {
+            activeQuiz().questions[Number(element.dataset.mapQuestion)].text = element.textContent.trim();
+            saveQuizzes();
+          });
+          element.addEventListener("click", (event) => event.stopPropagation());
+        });
+
+        document.querySelectorAll("[data-map-option]").forEach((element) => {
+          element.addEventListener("input", () => {
+            const [questionIndex, optionIndex] = element.dataset.mapOption.split(":").map(Number);
+            activeQuiz().questions[questionIndex].options[optionIndex].text = element.textContent.trim();
+            saveQuizzes();
+          });
+          element.addEventListener("click", (event) => event.stopPropagation());
+        });
+
+        document.querySelectorAll("[data-map-result-key]").forEach((element) => {
+          element.addEventListener("input", () => {
+            activeQuiz().results[Number(element.dataset.mapResult)][element.dataset.mapResultKey] = element.textContent.trim();
+            saveQuizzes();
+          });
+          element.addEventListener("click", (event) => event.stopPropagation());
+        });
+
+        document.querySelectorAll("[data-map-bullet]").forEach((element) => {
+          element.addEventListener("input", () => {
+            activeQuiz().results[Number(element.dataset.mapResult)].bullets[Number(element.dataset.mapBullet)] = element.textContent.trim();
+            saveQuizzes();
+          });
+          element.addEventListener("click", (event) => event.stopPropagation());
         });
 
         document.querySelectorAll("[data-traveler-name]").forEach((input) => {
@@ -2333,6 +2453,9 @@
         });
 
         document.querySelectorAll("[data-stage-drop]").forEach((node) => {
+          node.addEventListener("pointerdown", () => {
+            state.adminStage = Number(node.dataset.stageDrop || 0);
+          });
           node.addEventListener("dragover", (event) => {
             if (!event.dataTransfer.types.includes("text/quiz-component")) return;
             event.preventDefault();
@@ -2347,6 +2470,36 @@
             event.stopPropagation();
             state.adminStage = Number(node.dataset.stageDrop || 0);
             addStageComponent(type);
+          });
+        });
+
+        document.querySelectorAll(".funnel-node-move-handle").forEach((handle) => {
+          handle.addEventListener("pointerdown", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const wrapper = handle.closest("[data-flow-node]");
+            const track = wrapper.closest(".funnel-node-track");
+            const stage = Number(wrapper.dataset.flowNode);
+            const startX = event.clientX;
+            const startY = event.clientY;
+            const startLeft = wrapper.offsetLeft;
+            const startTop = wrapper.offsetTop;
+            handle.setPointerCapture(event.pointerId);
+            const move = (moveEvent) => {
+              const zoom = state.mapZoom || 1;
+              wrapper.style.left = `${Math.max(0, startLeft + (moveEvent.clientX - startX) / zoom)}px`;
+              wrapper.style.top = `${Math.max(0, startTop + (moveEvent.clientY - startY) / zoom)}px`;
+              renderFunnelConnections();
+            };
+            const end = () => {
+              handle.removeEventListener("pointermove", move);
+              handle.removeEventListener("pointerup", end);
+              activeQuiz().flowLayout ||= {};
+              activeQuiz().flowLayout[stageKey(activeQuiz(), stage)] = { x: wrapper.offsetLeft, y: wrapper.offsetTop };
+              saveQuizzes();
+            };
+            handle.addEventListener("pointermove", move);
+            handle.addEventListener("pointerup", end);
           });
         });
 
