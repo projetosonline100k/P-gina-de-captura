@@ -64,6 +64,7 @@
         leadSubtitle: "Preencha seus dados e receba a recomendação personalizada.",
         purchaseUrl: "https://pay.kiwify.com.br/SLuCcgS",
         theme: "#0f766e",
+        loadingDuration: 6,
         questions: [
           {
             text: "Qual dessas frases mais parece com você hoje?",
@@ -169,7 +170,9 @@
         remoteLoaded: false,
         remoteLoading: false,
         remoteError: "",
-        publicQuizLoads: {}
+        publicQuizLoads: {},
+        unpublishedQuizIds: new Set(),
+        priceTemplatePicker: false
       };
 
       function clone(value) {
@@ -202,15 +205,15 @@
 
       function saveQuizzes() {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
-        scheduleQuizSync(activeQuiz());
-      }
-
-      let quizSyncTimer = null;
-
-      function scheduleQuizSync(quiz) {
-        if (!supabaseEnabled() || !quiz) return;
-        window.clearTimeout(quizSyncTimer);
-        quizSyncTimer = window.setTimeout(() => syncQuizDefinition(quiz), 450);
+        const quizId = activeQuiz()?.id;
+        if (quizId) {
+          state.unpublishedQuizIds.add(quizId);
+          const publishButton = document.querySelector("[data-action='publish-quiz']");
+          if (publishButton) {
+            publishButton.classList.add("has-changes");
+            publishButton.textContent = "Publicar alterações";
+          }
+        }
       }
 
       function syncQuizDefinition(quiz) {
@@ -248,6 +251,7 @@
         } catch (error) {
           console.warn("Não foi possível publicar a configuração do quiz:", error);
           state.remoteError = "O quiz foi salvo neste navegador, mas não foi possível publicá-lo online.";
+          throw error;
         }
       }
 
@@ -260,7 +264,7 @@
             const rows = await supabaseRequest(`quiz_definitions?slug=eq.${encodeURIComponent(slug)}&select=config&limit=1`);
             remoteQuiz = rows?.[0]?.config || null;
           } catch (error) {
-            const fallbackRows = await supabaseRequest(`quiz_submissions?result_profile=eq.__quiz_definition__&result_title=eq.${encodeURIComponent(slug)}&select=answers&limit=1`);
+            const fallbackRows = await supabaseRequest(`quiz_submissions?result_profile=eq.__quiz_definition__&result_title=eq.${encodeURIComponent(slug)}&select=answers&order=created_at.desc&limit=1`);
             remoteQuiz = fallbackRows?.[0]?.answers || null;
           }
           if (remoteQuiz) {
@@ -268,7 +272,6 @@
             const index = state.quizzes.findIndex((quiz) => quiz.id === clean.id || slugFor(quiz) === slug);
             if (index >= 0) state.quizzes[index] = clean;
             else state.quizzes.push(clean);
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
           }
           state.publicQuizLoads[slug] = "loaded";
         } catch (error) {
@@ -295,6 +298,7 @@
         if (!supabaseEnabled()) return null;
         const response = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
           method: options.method || "GET",
+          cache: "no-store",
           headers: {
             apikey: SUPABASE_KEY,
             Authorization: `Bearer ${SUPABASE_KEY}`,
@@ -308,7 +312,14 @@
           throw new Error(detail || `Supabase retornou ${response.status}`);
         }
         if (response.status === 204) return null;
-        return response.json();
+        const responseText = await response.text();
+        if (!responseText.trim()) return null;
+        try {
+          return JSON.parse(responseText);
+        } catch (error) {
+          console.warn("O Supabase respondeu sem JSON válido:", responseText);
+          return responseText;
+        }
       }
 
       function remoteSubmission(row) {
@@ -491,7 +502,12 @@
           return normalizeQuiz(state.quizzes.find((quiz) => slugFor(quiz) === slug) || null);
         }
         try {
-          return normalizeQuiz(decodeQuiz(encoded));
+          const embeddedQuiz = normalizeQuiz(decodeQuiz(encoded));
+          const embeddedSlug = slugFor(embeddedQuiz);
+          const remoteQuiz = state.publicQuizLoads[embeddedSlug] === "loaded"
+            ? state.quizzes.find((quiz) => slugFor(quiz) === embeddedSlug)
+            : null;
+          return normalizeQuiz(remoteQuiz || embeddedQuiz);
         } catch (error) {
           return null;
         }
@@ -508,6 +524,8 @@
         if (!clean.questions.length) clean.questions = clone(defaultQuiz.questions);
         if (!clean.results.length) clean.results = clone(defaultQuiz.results);
         clean.stageComponents = clean.stageComponents || {};
+        clean.hiddenElements = clean.hiddenElements || {};
+        clean.loadingDuration = Math.max(1, Math.min(300, Number(clean.loadingDuration) || 6));
         if (!Array.isArray(clean.flowConnections)) clean.flowConnections = [];
         Object.values(clean.stageComponents).flat().forEach((component) => {
           if (component?.type === "Timer") {
@@ -534,7 +552,7 @@
         if (key === "publication") return;
         const defaults = {
           "Vídeo": { content: "", label: "Cole aqui o link ou código de incorporação da Vturb" },
-          "Imagem": { content: "", label: "Cole a URL da imagem" },
+          "Imagem": { content: "", label: "Escolha uma imagem ou cole uma URL" },
           "Botão": { content: "Quero continuar", url: "#" },
           "Espaço": { content: "48" },
           "Timer": { content: "10", action: "show", targetIds: [], showCountdown: false, behaviorVersion: 2 },
@@ -547,6 +565,92 @@
         render();
       }
 
+      const priceTemplates = {
+        simple: { name: "Preço simples", category: "Simples", template: "simple", title: "Acesso completo", price: "R$ 97,00", oldPrice: "", suffix: "", badge: "", features: "" },
+        offer: { name: "De / Por", category: "Oferta", template: "offer", title: "Por", price: "R$ 97,00", oldPrice: "De R$ 197,00", suffix: "", badge: "", features: "" },
+        installments: { name: "Parcelamento", category: "Oferta", template: "installments", title: "12x de", price: "R$ 9,74", oldPrice: "", suffix: "ou R$ 97,00 à vista", badge: "", features: "" },
+        premium: { name: "Card premium", category: "Planos", template: "premium", title: "Plano Premium", price: "R$ 147,00", oldPrice: "", suffix: "", badge: "★ Mais escolhido", features: "" },
+        monthly: { name: "Assinatura mensal", category: "Planos", template: "monthly", title: "", price: "R$ 29,90", oldPrice: "", suffix: "por mês", badge: "", features: "" },
+        comparison: {
+          name: "Comparação de planos",
+          category: "Planos",
+          template: "comparison",
+          title: "Básico",
+          price: "R$ 49,90",
+          oldPrice: "Premium",
+          suffix: "R$ 99,90",
+          badge: "",
+          features: "Recurso 1\nRecurso 2\nRecurso 3\nRecurso 4",
+          basicFeatures: "Recurso 1\nRecurso 2\nRecurso 3",
+          premiumFeatures: "Recurso 1\nRecurso 2\nRecurso 3\nRecurso 4",
+          basicButtonLabel: "Escolher Básico",
+          basicButtonUrl: "#",
+          basicBillingPeriod: "/mês",
+          premiumButtonLabel: "Escolher Premium",
+          premiumButtonUrl: "#",
+          premiumBillingPeriod: "/mês"
+        }
+      };
+
+      function addPriceTemplate(templateId) {
+        const template = priceTemplates[templateId] || priceTemplates.simple;
+        const quiz = activeQuiz();
+        const key = stageKey(quiz);
+        if (key === "publication") return;
+        quiz.stageComponents ||= {};
+        const component = {
+          id: uid("component"),
+          type: "Preço",
+          position: 4,
+          ...clone(template)
+        };
+        delete component.name;
+        delete component.category;
+        (quiz.stageComponents[key] ||= []).push(component);
+        state.selectedComponentId = component.id;
+        state.priceTemplatePicker = false;
+        saveQuizzes();
+        render();
+      }
+
+      function addOrChooseComponent(type) {
+        if (type === "Preço") {
+          state.priceTemplatePicker = true;
+          render();
+          return;
+        }
+        addStageComponent(type);
+      }
+
+      function priceTemplatePreview(template, compact = false) {
+        const component = { id: "preview", type: "Preço", ...template };
+        return priceCardMarkup(component, false, compact);
+      }
+
+      function priceTemplateModal() {
+        return `
+          <div class="price-template-backdrop">
+            <section class="price-template-modal" role="dialog" aria-modal="true" aria-label="Templates de preço">
+              <header>
+                <div><span>Componente</span><h2>Templates de Preço</h2></div>
+                <button type="button" data-action="close-price-templates" aria-label="Fechar">×</button>
+              </header>
+              <div class="price-template-filters"><span class="active">Todos</span><span>Simples</span><span>Oferta</span><span>Planos</span></div>
+              <div class="price-template-grid">
+                ${Object.entries(priceTemplates).map(([id, template]) => `
+                  <article class="price-template-option">
+                    <div class="price-template-preview">${priceTemplatePreview(template, true)}</div>
+                    <strong>${escapeHtml(template.name)}</strong>
+                    <small>${escapeHtml(template.category)}</small>
+                    <button type="button" data-action="choose-price-template" data-template="${id}">Usar template</button>
+                  </article>
+                `).join("")}
+              </div>
+            </section>
+          </div>
+        `;
+      }
+
       function removeStageComponent(id) {
         const quiz = activeQuiz();
         const key = stageKey(quiz);
@@ -554,6 +658,125 @@
         state.selectedComponentId = null;
         saveQuizzes();
         render();
+      }
+
+      function stageComponentById(id) {
+        return (activeQuiz().stageComponents?.[stageKey(activeQuiz())] || []).find((item) => item.id === id);
+      }
+
+      function clearStageImage(id) {
+        const component = stageComponentById(id);
+        if (!component || component.type !== "Imagem") return;
+        component.content = "";
+        saveQuizzes();
+        render();
+      }
+
+      function hideStageElement(targetId) {
+        const quiz = activeQuiz();
+        const key = stageKey(quiz);
+        quiz.hiddenElements ||= {};
+        quiz.hiddenElements[key] ||= [];
+        if (!quiz.hiddenElements[key].includes(targetId)) quiz.hiddenElements[key].push(targetId);
+        saveQuizzes();
+        render();
+      }
+
+      function restoreStageElement(targetId) {
+        const quiz = activeQuiz();
+        const key = stageKey(quiz);
+        quiz.hiddenElements ||= {};
+        quiz.hiddenElements[key] = (quiz.hiddenElements[key] || []).filter((id) => id !== targetId);
+        saveQuizzes();
+        render();
+      }
+
+      function applyHiddenStageElements(quiz, key, root = document) {
+        (quiz.hiddenElements?.[key] || []).forEach((targetId) => {
+          root.querySelectorAll(`[data-delay-target="${CSS.escape(targetId)}"]`).forEach((element) => {
+            element.classList.add("builder-element-hidden");
+          });
+        });
+      }
+
+      function decorateRemovableStageElements(root) {
+        root.querySelectorAll("[data-delay-target]").forEach((element) => {
+          const targetId = element.dataset.delayTarget;
+          if (!targetId || targetId.startsWith("component:") || element.classList.contains("builder-element-hidden")) return;
+          element.classList.add("builder-removable-element");
+          const remove = document.createElement("span");
+          remove.className = "builder-remove-element";
+          remove.setAttribute("role", "button");
+          remove.setAttribute("aria-label", "Remover este elemento");
+          remove.title = "Remover este elemento";
+          remove.addEventListener("click", (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            hideStageElement(targetId);
+          });
+          element.appendChild(remove);
+        });
+      }
+
+      function imageFileData(file) {
+        return new Promise((resolve, reject) => {
+          if (!file || !file.type.startsWith("image/")) {
+            reject(new Error("Escolha um arquivo de imagem válido."));
+            return;
+          }
+          if (file.size > 10 * 1024 * 1024) {
+            reject(new Error("A imagem deve ter no máximo 10 MB."));
+            return;
+          }
+          const reader = new FileReader();
+          reader.onerror = () => reject(new Error("Não foi possível ler essa imagem."));
+          reader.onload = () => {
+            const source = String(reader.result || "");
+            const image = new Image();
+            image.onerror = () => reject(new Error("O arquivo selecionado não pôde ser aberto como imagem."));
+            image.onload = () => {
+              const maxDimension = 1800;
+              const scale = Math.min(1, maxDimension / Math.max(image.naturalWidth, image.naturalHeight));
+              const canvas = document.createElement("canvas");
+              canvas.width = Math.max(1, Math.round(image.naturalWidth * scale));
+              canvas.height = Math.max(1, Math.round(image.naturalHeight * scale));
+              const context = canvas.getContext("2d");
+              if (!context) {
+                resolve(source);
+                return;
+              }
+              context.drawImage(image, 0, 0, canvas.width, canvas.height);
+              resolve(canvas.toDataURL("image/webp", 0.86));
+            };
+            image.src = source;
+          };
+          reader.readAsDataURL(file);
+        });
+      }
+
+      async function uploadStageImage(input) {
+        const component = stageComponentById(input.dataset.imageUpload);
+        const file = input.files?.[0];
+        if (!component || component.type !== "Imagem" || !file) return;
+        try {
+          component.content = await imageFileData(file);
+          saveQuizzes();
+          render();
+        } catch (error) {
+          window.alert(error.message || "Não foi possível enviar a imagem.");
+          input.value = "";
+        }
+      }
+
+      function imageUploadControls(component, inline = false) {
+        const id = `image-upload-${component.id}-${inline ? "inline" : "panel"}`;
+        return `
+          <div class="image-upload-controls">
+            <input class="image-file-input" id="${escapeAttr(id)}" type="file" accept="image/png,image/jpeg,image/webp" data-image-upload="${component.id}">
+            <label class="image-upload-button" for="${escapeAttr(id)}">${component.content ? "Trocar imagem" : "Escolher imagem"}</label>
+            ${component.content ? `<button type="button" class="image-remove-button" data-action="clear-stage-image" data-component-id="${component.id}">Remover imagem</button>` : ""}
+          </div>
+        `;
       }
 
       function moveStageComponent(id, direction) {
@@ -934,8 +1157,9 @@
 
       function render() {
         const routeParams = new URLSearchParams(window.location.search);
-        const publicSlug = routeParams.get("quiz");
-        if (publicSlug && !adminRoute() && !routeParams.has("q") && !routeParams.has("preview")) {
+        const routeQuiz = getPublicQuiz();
+        const publicSlug = routeParams.get("quiz") || (routeParams.has("q") && routeQuiz ? slugFor(routeQuiz) : "");
+        if (publicSlug && !adminRoute() && !routeParams.has("preview")) {
           loadRemotePublicQuiz(publicSlug);
         }
         const publicQuiz = getPublicQuiz();
@@ -949,6 +1173,13 @@
         document.getElementById("app").innerHTML = isPublic
           ? publicView(publicQuiz)
           : dashboardView();
+        if (isPublic) {
+          applyHiddenStageElements(publicQuiz, activeExperienceKey(publicQuiz));
+        } else if (state.adminTab === "builder" && state.builderView === "page") {
+          const frame = document.querySelector(".selected-outline");
+          applyHiddenStageElements(activeQuiz(), stageKey(activeQuiz()), frame || document);
+          if (frame) decorateRemovableStageElements(frame);
+        }
         bindEvents(isPublic ? publicQuiz : activeQuiz());
         if (isPublic) {
           lastPublicScrollKey = publicScrollKey;
@@ -1011,6 +1242,8 @@
           const frame = document.querySelector(".selected-outline");
           if (frame) {
             frame.innerHTML = adminCanvasPreview(activeQuiz());
+            applyHiddenStageElements(activeQuiz(), stageKey(activeQuiz()), frame);
+            decorateRemovableStageElements(frame);
             bindRefreshedAdminPreview(frame);
             bindRefreshedCanvasEditing(frame);
             fitAdminCanvas();
@@ -1035,10 +1268,12 @@
               state.selectedComponentId = element.dataset.componentId;
             }
             if (action === "remove-stage-component") removeStageComponent(element.dataset.componentId);
+            if (action === "clear-stage-image") clearStageImage(element.dataset.componentId);
+            if (action === "restore-stage-element") restoreStageElement(element.dataset.targetId);
             if (action === "move-custom-up") moveStageComponent(element.dataset.componentId, -1);
             if (action === "move-custom-down") moveStageComponent(element.dataset.componentId, 1);
             event.preventDefault();
-            if (!["remove-stage-component", "move-custom-up", "move-custom-down"].includes(action)) render();
+            if (!["remove-stage-component", "clear-stage-image", "move-custom-up", "move-custom-down"].includes(action)) render();
           });
         });
       }
@@ -1049,10 +1284,16 @@
             const components = activeQuiz().stageComponents?.[stageKey(activeQuiz())] || [];
             const component = components.find((item) => item.id === input.dataset.inlineComponent);
             if (!component) return;
-            component[input.dataset.componentKey] = input.matches("textarea, input, select") ? input.value : input.textContent;
+            component[input.dataset.componentKey] = input.matches("textarea, input, select")
+              ? input.value
+              : (input.classList.contains("price-feature-copy") ? input.innerText : input.textContent);
             saveQuizzes();
           });
           if (input.matches("textarea, input, select")) input.addEventListener("change", refreshAdminCanvas);
+          input.addEventListener("click", (event) => event.stopPropagation());
+        });
+        root.querySelectorAll("[data-image-upload]").forEach((input) => {
+          input.addEventListener("change", () => uploadStageImage(input));
           input.addEventListener("click", (event) => event.stopPropagation());
         });
         root.querySelectorAll("[data-timer-target]").forEach((input) => {
@@ -1348,6 +1589,7 @@
       }
 
       function adminShell(quiz, link, content) {
+        const hasChanges = state.unpublishedQuizIds.has(quiz.id);
         return `
           <main class="admin-builder">
             <header class="builder-topbar">
@@ -1369,13 +1611,14 @@
               <div class="builder-actions">
                 <button class="tool-icon" aria-label="Mobile">▯</button>
                 <button class="tool-icon" aria-label="Compartilhar" data-action="copy-link">⌘</button>
-                <a class="tool-icon" href="${escapeAttr(previewUrl())}" target="_blank" rel="noopener" aria-label="Visualizar">▷</a>
-                <button class="save-btn" data-action="save-quiz">Salvar</button>
-                <a class="publish-btn" href="${escapeAttr(link)}" target="_blank" rel="noopener">Publicar</a>
+                <a class="preview-btn" href="${escapeAttr(previewUrl())}" target="_blank" rel="noopener">▷ Ver prévia</a>
+                <button class="save-btn" data-action="save-quiz">Salvar rascunho</button>
+                <button class="publish-btn ${hasChanges ? "has-changes" : ""}" data-action="publish-quiz">${hasChanges ? "Publicar alterações" : "Publicar"}</button>
               </div>
             </header>
             ${remoteStatusView()}
             ${content}
+            ${state.priceTemplatePicker ? priceTemplateModal() : ""}
           </main>
         `;
       }
@@ -1465,10 +1708,10 @@
               <input value="Preparando seu diagnóstico" readonly>
             </label>
             <label class="field">
-              <span>Progresso inicial</span>
-              <input value="10%" readonly>
+              <span>Tempo até trocar de página (segundos)</span>
+              <input type="number" min="1" max="300" step="0.5" value="${escapeAttr(quiz.loadingDuration || 6)}" data-field="loadingDuration">
             </label>
-            <p class="settings-note">Essa etapa aparece automaticamente depois da última pergunta.</p>
+            <p class="settings-note">A barra avança suavemente de 0% a 100% durante esse tempo e depois abre o resultado.</p>
           `;
         }
 
@@ -1496,10 +1739,62 @@
         `;
       }
 
+      function priceComponentEditor(component) {
+        const fields = [
+          ["Título", "title"],
+          ["Preço anterior / segundo plano", "oldPrice"],
+          ["Preço principal", "price"],
+          ["Complemento / preço do segundo plano", "suffix"],
+          ["Selo", "badge"]
+        ];
+        const comparisonButtons = component.template === "comparison" ? `
+          <div class="price-link-editor">
+            <strong>Plano Básico</strong>
+            <label class="field"><span>Benefícios, um por linha</span><textarea rows="4" data-stage-component="${component.id}" data-component-key="basicFeatures">${escapeHtml(component.basicFeatures || component.features || "")}</textarea></label>
+            <label class="field"><span>Período de cobrança</span><select data-stage-component="${component.id}" data-component-key="basicBillingPeriod">
+              <option value="/mês" ${(component.basicBillingPeriod || "/mês") === "/mês" ? "selected" : ""}>Mensal</option>
+              <option value="/ano" ${component.basicBillingPeriod === "/ano" ? "selected" : ""}>Anual</option>
+              <option value="pagamento vitalício" ${component.basicBillingPeriod === "pagamento vitalício" ? "selected" : ""}>Vitalício</option>
+            </select></label>
+            <label class="field"><span>Texto do botão</span><input value="${escapeAttr(component.basicButtonLabel || "Escolher Básico")}" data-stage-component="${component.id}" data-component-key="basicButtonLabel"></label>
+            <label class="field"><span>Link do botão</span><input type="url" placeholder="https://..." value="${escapeAttr(component.basicButtonUrl || "")}" data-stage-component="${component.id}" data-component-key="basicButtonUrl"></label>
+          </div>
+          <div class="price-link-editor">
+            <strong>Plano Premium</strong>
+            <label class="field"><span>Benefícios, um por linha</span><textarea rows="4" data-stage-component="${component.id}" data-component-key="premiumFeatures">${escapeHtml(component.premiumFeatures || component.features || "")}</textarea></label>
+            <label class="field"><span>Período de cobrança</span><select data-stage-component="${component.id}" data-component-key="premiumBillingPeriod">
+              <option value="/mês" ${(component.premiumBillingPeriod || "/mês") === "/mês" ? "selected" : ""}>Mensal</option>
+              <option value="/ano" ${component.premiumBillingPeriod === "/ano" ? "selected" : ""}>Anual</option>
+              <option value="pagamento vitalício" ${component.premiumBillingPeriod === "pagamento vitalício" ? "selected" : ""}>Vitalício</option>
+            </select></label>
+            <label class="field"><span>Texto do botão</span><input value="${escapeAttr(component.premiumButtonLabel || "Escolher Premium")}" data-stage-component="${component.id}" data-component-key="premiumButtonLabel"></label>
+            <label class="field"><span>Link do botão</span><input type="url" placeholder="https://..." value="${escapeAttr(component.premiumButtonUrl || "")}" data-stage-component="${component.id}" data-component-key="premiumButtonUrl"></label>
+          </div>
+        ` : "";
+        return `
+          <div class="price-component-editor">
+            ${fields.map(([label, key]) => `<label class="field"><span>${label}</span><input value="${escapeAttr(component[key] || "")}" data-stage-component="${component.id}" data-component-key="${key}"></label>`).join("")}
+            ${component.template === "comparison" ? "" : `<label class="field"><span>Benefícios, um por linha</span><textarea rows="4" data-stage-component="${component.id}" data-component-key="features">${escapeHtml(component.features || "")}</textarea></label>`}
+            ${comparisonButtons}
+          </div>
+        `;
+      }
+
       function stageComponentsEditor(quiz, stage) {
         const components = quiz.stageComponents?.[stageKey(quiz, stage)] || [];
-        if (!components.length) return `<p class="settings-note component-help">Clique ou arraste um componente para a página.</p>`;
+        const key = stageKey(quiz, stage);
+        const removed = quiz.hiddenElements?.[key] || [];
+        const removedLabels = Object.fromEntries(timerTargetOptions(quiz, stage).filter(([id]) => !id.startsWith("component:")));
+        const removedPanel = removed.length ? `
+          <div class="removed-elements-panel">
+            <strong>Elementos removidos</strong>
+            <p>Você pode restaurar qualquer item desta página.</p>
+            ${removed.map((id) => `<button type="button" data-action="restore-stage-element" data-target-id="${escapeAttr(id)}">Restaurar ${escapeHtml(removedLabels[id] || id)}</button>`).join("")}
+          </div>
+        ` : "";
+        if (!components.length) return `${removedPanel}<p class="settings-note component-help">Passe o mouse sobre qualquer elemento da página e clique no × para removê-lo.</p>`;
         return `
+          ${removedPanel}
           <div class="added-components">
             <h3>Componentes adicionados</h3>
             ${components.map((component) => `
@@ -1508,7 +1803,13 @@
                   <strong>${escapeHtml(component.type)}</strong>
                   <button type="button" class="text-btn" data-action="remove-stage-component" data-component-id="${component.id}">Remover</button>
                 </div>
-                ${component.type === "Timer" ? timerComponentEditor(quiz, stage, component) : `<label class="field">
+                ${component.type === "Preço" ? priceComponentEditor(component) : component.type === "Imagem" ? `
+                  ${imageUploadControls(component)}
+                  <label class="field">
+                    <span>Ou use uma URL da imagem</span>
+                    <input placeholder="https://exemplo.com/imagem.jpg" value="${escapeAttr(component.content?.startsWith("data:") ? "" : (component.content || ""))}" data-stage-component="${component.id}" data-component-key="content">
+                  </label>
+                ` : component.type === "Timer" ? timerComponentEditor(quiz, stage, component) : `<label class="field">
                   <span>${component.type === "Vídeo" ? "Link ou código embed da Vturb" : component.type === "Imagem" ? "URL da imagem" : "Conteúdo"}</span>
                   <textarea rows="5" placeholder="${escapeAttr(component.label || "Digite o conteúdo")}" data-stage-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "")}</textarea>
                 </label>`}
@@ -1574,6 +1875,47 @@
         return `<div class="custom-components ${components.length ? "" : "empty-component-position"}"${dropData}>${components.map((component) => componentView(component, preview)).join("")}</div>`;
       }
 
+      function priceEditable(component, key, preview, className = "", fallback = "") {
+        const value = component[key] || fallback;
+        return `<span class="${className}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="${key}">${escapeHtml(value)}</span>`;
+      }
+
+      function priceCardMarkup(component, preview, compact = false) {
+        const template = component.template || "simple";
+        const editable = (key, className = "", fallback = "") => priceEditable(component, key, preview, className, fallback);
+        if (template === "comparison") {
+          const linkPreview = preview || compact;
+          return `
+            <div class="price-card price-card-comparison ${compact ? "compact" : ""}">
+              <div class="price-plan">
+                ${editable("title", "price-plan-name")}
+                ${editable("price", "price-plan-value")}
+                ${editable("basicBillingPeriod", "price-billing-period", "/mês")}
+                <div class="price-feature-copy" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="basicFeatures">${escapeHtml(component.basicFeatures || component.features || "")}</div>
+                <a class="price-plan-button" href="${escapeAttr(component.basicButtonUrl || "#")}" ${linkPreview ? `data-action="preview-price-link"` : `target="_blank" rel="noopener"`}>${editable("basicButtonLabel", "price-plan-button-label", "Escolher Básico")}</a>
+              </div>
+              <div class="price-plan featured">
+                ${editable("oldPrice", "price-plan-name")}
+                ${editable("suffix", "price-plan-value")}
+                ${editable("premiumBillingPeriod", "price-billing-period", "/mês")}
+                <div class="price-feature-copy" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="premiumFeatures">${escapeHtml(component.premiumFeatures || component.features || "")}</div>
+                <a class="price-plan-button premium" href="${escapeAttr(component.premiumButtonUrl || "#")}" ${linkPreview ? `data-action="preview-price-link"` : `target="_blank" rel="noopener"`}>${editable("premiumButtonLabel", "price-plan-button-label", "Escolher Premium")}</a>
+              </div>
+            </div>
+          `;
+        }
+        return `
+          <div class="price-card price-card-${escapeAttr(template)} ${compact ? "compact" : ""}">
+            ${component.badge || preview ? editable("badge", "price-badge") : ""}
+            ${component.oldPrice || preview ? editable("oldPrice", "price-old") : ""}
+            ${editable("title", "price-title")}
+            ${editable("price", "price-value")}
+            ${editable("suffix", "price-suffix")}
+            <span class="price-accent"></span>
+          </div>
+        `;
+      }
+
       function componentView(component, preview) {
         const selected = preview && state.selectedComponentId === component.id ? " selected-custom-component" : "";
         const selectAttr = preview ? ` data-action="select-custom-component" data-component-id="${component.id}"` : "";
@@ -1601,7 +1943,8 @@
           const ratioClass = component.aspectRatio === "9:16" ? " video-reels" : "";
           return `<div class="custom-component video-component${ratioClass}${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${player}${inlineEditor}</div>`;
         }
-        if (component.type === "Imagem") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${component.content ? `<img class="custom-image" src="${escapeAttr(component.content)}" alt="">` : `<div class="component-placeholder">Imagem</div>`}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.content || "")}" placeholder="URL da imagem" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
+        if (component.type === "Preço") return `<div class="custom-component price-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${priceCardMarkup(component, preview)}</div>`;
+        if (component.type === "Imagem") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${component.content ? `<img class="custom-image" src="${escapeAttr(component.content)}" alt="">` : `<div class="component-placeholder">Imagem</div>`}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor image-inline-editor">${imageUploadControls(component, true)}<input value="${escapeAttr(component.content?.startsWith("data:") ? "" : (component.content || ""))}" placeholder="Ou cole a URL da imagem" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
         if (component.type === "Botão") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<a class="diagnostic-btn custom-button" href="${escapeAttr(component.url || "#")}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Botão")}</a>${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.url || "")}" placeholder="Link do botão" data-inline-component="${component.id}" data-component-key="url"></div>` : ""}</div>`;
         if (component.type === "Espaço") return `<div class="custom-component spacer-component${selected}" style="height:${Math.max(8, Number(component.content) || 48)}px"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input type="number" min="8" value="${escapeAttr(component.content || "48")}" aria-label="Altura do espaço" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
         return `<div class="custom-component generic-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<strong>${escapeHtml(component.type)}</strong><p contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Clique para editar")}</p></div>`;
@@ -1978,6 +2321,7 @@
       }
 
       let loadingTimer = null;
+      let loadingStartedAt = 0;
       let lastPublicScrollKey = "";
       let delayTimerHandles = [];
       const delayStartedAt = new Map();
@@ -2090,7 +2434,7 @@
               <p class="loading-kicker">Preparando seu diagnóstico</p>
               <h2 data-delay-target="loading-title">Perfeito! Estamos calculando seu diagnóstico de viagem...</h2>
               ${stageComponentsView(quiz, "loading", preview, 1)}
-              <div data-delay-target="loading-progress"><div class="loading-bar"><span style="width:${state.loadingProgress}%"></span></div><strong class="loading-number">${state.loadingProgress}%</strong></div>
+              <div data-delay-target="loading-progress"><div class="loading-bar"><span style="width:${Math.max(0, Math.min(100, Number(state.loadingProgress) || 0))}%"></span></div><strong class="loading-number">${Math.floor(Math.max(0, Math.min(100, Number(state.loadingProgress) || 0)))}%</strong></div>
               ${stageComponentsView(quiz, "loading", preview, 2)}
               <p class="social-kicker">Enquanto isso, veja quem já organizou a viagem</p>
               <div class="social-stack" data-delay-target="loading-social">
@@ -2281,6 +2625,8 @@
             if (action === "add-result") addResult();
             if (action === "remove-result") removeResult(Number(element.dataset.r));
             if (action === "remove-stage-component") removeStageComponent(element.dataset.componentId);
+            if (action === "clear-stage-image") clearStageImage(element.dataset.componentId);
+            if (action === "restore-stage-element") restoreStageElement(element.dataset.targetId);
             if (action === "move-custom-up") moveStageComponent(element.dataset.componentId, -1);
             if (action === "move-custom-down") moveStageComponent(element.dataset.componentId, 1);
             if (action === "select-custom-component") {
@@ -2309,21 +2655,36 @@
               render();
             }
             if (action === "export-submissions") exportSubmissions(activeQuiz());
+            if (action === "close-price-templates") {
+              state.priceTemplatePicker = false;
+              render();
+            }
+            if (action === "choose-price-template") addPriceTemplate(element.dataset.template);
             if (action === "save-quiz") {
-              saveQuizzes();
-              window.clearTimeout(quizSyncTimer);
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
+              element.disabled = true;
+              element.textContent = "Rascunho salvo";
+              window.setTimeout(() => {
+                element.disabled = false;
+                element.textContent = "Salvar rascunho";
+              }, 1200);
+            }
+            if (action === "publish-quiz") {
+              const quizToPublish = activeQuiz();
+              localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
               element.disabled = true;
               element.textContent = "Publicando...";
-              syncQuizDefinition(activeQuiz()).then(() => {
-                element.textContent = state.remoteError ? "Erro ao publicar" : "Publicado";
-                window.setTimeout(() => {
-                  element.disabled = false;
-                  element.textContent = "Salvar";
-                }, 1400);
+              syncQuizDefinition(quizToPublish).then(() => {
+                state.unpublishedQuizIds.delete(quizToPublish.id);
+                state.remoteError = "";
+                render();
+              }).catch(() => {
+                element.disabled = false;
+                element.textContent = "Tentar publicar novamente";
               });
             }
             if (action === "component-pick") {
-              addStageComponent(element.dataset.component);
+              addOrChooseComponent(element.dataset.component);
             }
             if (action === "preview-start" && !isPublicPage) {
               state.adminStage = Math.min(1, quiz.questions.length);
@@ -2527,6 +2888,11 @@
           });
         });
 
+        document.querySelectorAll("[data-image-upload]").forEach((input) => {
+          input.addEventListener("change", () => uploadStageImage(input));
+          input.addEventListener("click", (event) => event.stopPropagation());
+        });
+
         document.querySelectorAll("[data-timer-target]").forEach((input) => {
           input.addEventListener("change", () => {
             const components = activeQuiz().stageComponents?.[stageKey(activeQuiz())] || [];
@@ -2555,7 +2921,9 @@
             const components = activeQuiz().stageComponents?.[stageKey(activeQuiz())] || [];
             const component = components.find((item) => item.id === input.dataset.inlineComponent);
             if (!component) return;
-            component[input.dataset.componentKey] = input.matches("textarea, input, select") ? input.value : input.textContent;
+            component[input.dataset.componentKey] = input.matches("textarea, input, select")
+              ? input.value
+              : (input.classList.contains("price-feature-copy") ? input.innerText : input.textContent);
             saveQuizzes();
           });
           if (input.matches("textarea, input, select")) input.addEventListener("change", refreshAdminCanvas);
@@ -2634,7 +3002,7 @@
             event.preventDefault();
             event.stopPropagation();
             state.adminStage = Number(node.dataset.stageDrop || 0);
-            addStageComponent(type);
+            addOrChooseComponent(type);
           });
         });
 
@@ -2733,7 +3101,7 @@
             event.preventDefault();
             const type = event.dataTransfer.getData("text/quiz-component");
             canvasDropZone.classList.remove("drop-ready", "drag-over");
-            if (type) addStageComponent(type);
+            if (type) addOrChooseComponent(type);
           });
         }
 
@@ -2777,22 +3145,38 @@
 
       function startLoading() {
         if (loadingTimer) return;
-        loadingTimer = window.setInterval(() => {
+        const quiz = getPublicQuiz() || activeQuiz();
+        const durationMs = Math.max(1, Math.min(300, Number(quiz.loadingDuration) || 6)) * 1000;
+        loadingStartedAt = performance.now() - (Math.max(0, Number(state.loadingProgress) || 0) / 100) * durationMs;
+
+        const animate = (now) => {
           if (state.flowStage !== "loading") {
-            window.clearInterval(loadingTimer);
             loadingTimer = null;
+            loadingStartedAt = 0;
             return;
           }
-          state.loadingProgress = Math.min(100, Math.round(state.loadingProgress + 100 / 6));
-          if (state.loadingProgress >= 100) {
-            window.clearInterval(loadingTimer);
-            loadingTimer = null;
-            const quiz = getPublicQuiz() || activeQuiz();
-            const connection = flowConnectionFor(quiz, "loading", null);
-            if (!applyFlowTarget(quiz, connection?.to)) state.flowStage = "result";
+
+          const exactProgress = Math.min(100, ((now - loadingStartedAt) / durationMs) * 100);
+          state.loadingProgress = exactProgress;
+          const bar = document.querySelector(".loading-bar span");
+          const number = document.querySelector(".loading-number");
+          if (bar) bar.style.width = `${exactProgress}%`;
+          if (number) number.textContent = `${Math.floor(exactProgress)}%`;
+
+          if (exactProgress < 100) {
+            loadingTimer = window.requestAnimationFrame(animate);
+            return;
           }
+
+          state.loadingProgress = 100;
+          loadingTimer = null;
+          loadingStartedAt = 0;
+          const connection = flowConnectionFor(quiz, "loading", null);
+          if (!applyFlowTarget(quiz, connection?.to)) state.flowStage = "result";
           render();
-        }, 1000);
+        };
+
+        loadingTimer = window.requestAnimationFrame(animate);
       }
 
       function exportSubmissions(quiz) {
