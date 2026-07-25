@@ -1880,27 +1880,54 @@
         return `<span class="${className}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="${key}">${escapeHtml(value)}</span>`;
       }
 
+      function numericPrice(value) {
+        const clean = String(value || "").replace(/[^\d,.-]/g, "");
+        if (!clean) return Number.POSITIVE_INFINITY;
+        const normalized = clean.includes(",")
+          ? clean.replace(/\./g, "").replace(",", ".")
+          : clean;
+        const number = Number.parseFloat(normalized);
+        return Number.isFinite(number) ? number : Number.POSITIVE_INFINITY;
+      }
+
       function priceCardMarkup(component, preview, compact = false) {
         const template = component.template || "simple";
         const editable = (key, className = "", fallback = "") => priceEditable(component, key, preview, className, fallback);
         if (template === "comparison") {
           const linkPreview = preview || compact;
+          const plans = [
+            {
+              featured: false,
+              nameKey: "title",
+              priceKey: "price",
+              billingKey: "basicBillingPeriod",
+              featuresKey: "basicFeatures",
+              buttonLabelKey: "basicButtonLabel",
+              buttonUrl: component.basicButtonUrl,
+              buttonFallback: "Escolher Básico"
+            },
+            {
+              featured: true,
+              nameKey: "oldPrice",
+              priceKey: "suffix",
+              billingKey: "premiumBillingPeriod",
+              featuresKey: "premiumFeatures",
+              buttonLabelKey: "premiumButtonLabel",
+              buttonUrl: component.premiumButtonUrl,
+              buttonFallback: "Escolher Premium"
+            }
+          ].sort((a, b) => numericPrice(component[a.priceKey]) - numericPrice(component[b.priceKey]));
           return `
             <div class="price-card price-card-comparison ${compact ? "compact" : ""}">
-              <div class="price-plan">
-                ${editable("title", "price-plan-name")}
-                ${editable("price", "price-plan-value")}
-                ${editable("basicBillingPeriod", "price-billing-period", "/mês")}
-                <div class="price-feature-copy" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="basicFeatures">${escapeHtml(component.basicFeatures || component.features || "")}</div>
-                <a class="price-plan-button" href="${escapeAttr(component.basicButtonUrl || "#")}" ${linkPreview ? `data-action="preview-price-link"` : `target="_blank" rel="noopener"`}>${editable("basicButtonLabel", "price-plan-button-label", "Escolher Básico")}</a>
-              </div>
-              <div class="price-plan featured">
-                ${editable("oldPrice", "price-plan-name")}
-                ${editable("suffix", "price-plan-value")}
-                ${editable("premiumBillingPeriod", "price-billing-period", "/mês")}
-                <div class="price-feature-copy" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="premiumFeatures">${escapeHtml(component.premiumFeatures || component.features || "")}</div>
-                <a class="price-plan-button premium" href="${escapeAttr(component.premiumButtonUrl || "#")}" ${linkPreview ? `data-action="preview-price-link"` : `target="_blank" rel="noopener"`}>${editable("premiumButtonLabel", "price-plan-button-label", "Escolher Premium")}</a>
-              </div>
+              ${plans.map((plan) => `
+                <div class="price-plan ${plan.featured ? "featured" : ""}">
+                  ${editable(plan.nameKey, "price-plan-name")}
+                  ${editable(plan.priceKey, "price-plan-value")}
+                  ${editable(plan.billingKey, "price-billing-period", "/mês")}
+                  <div class="price-feature-copy" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="${plan.featuresKey}">${escapeHtml(component[plan.featuresKey] || component.features || "")}</div>
+                  <a class="price-plan-button ${plan.featured ? "premium" : ""}" href="${escapeAttr(plan.buttonUrl || "#")}" ${linkPreview ? `data-action="preview-price-link"` : `target="_blank" rel="noopener"`}>${editable(plan.buttonLabelKey, "price-plan-button-label", plan.buttonFallback)}</a>
+                </div>
+              `).join("")}
             </div>
           `;
         }

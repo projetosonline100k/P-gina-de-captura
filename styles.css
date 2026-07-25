@@ -1699,6 +1699,7 @@ select:focus {
   display: grid;
   place-items: center;
   padding: 12px;
+  container-type: inline-size;
 }
 
 .price-card {
@@ -1783,11 +1784,12 @@ select:focus {
 }
 
 .price-card-comparison {
+  width: min(100%, 840px);
   display: grid;
   grid-template-columns: repeat(2, 1fr);
   align-items: stretch;
-  gap: 8px;
-  padding: 18px;
+  gap: 18px;
+  padding: 22px;
 }
 
 .price-plan {
@@ -1795,10 +1797,24 @@ select:focus {
   min-width: 0;
   flex-direction: column;
   gap: 7px;
-  padding: 20px 14px;
+  padding: 28px 24px;
   border: 1px solid #e1e6ef;
   border-radius: 10px;
   text-align: left;
+}
+
+@container (max-width: 680px) {
+  .price-card-comparison {
+    width: 100%;
+    grid-template-columns: 1fr;
+    gap: 18px;
+    padding: 10px;
+  }
+
+  .price-card-comparison .price-plan {
+    width: 100%;
+    padding: 26px 22px;
+  }
 }
 
 .price-plan.featured {
@@ -3223,6 +3239,18 @@ select:focus {
 
   .price-template-filters {
     overflow-x: auto;
+  }
+
+  .price-card-comparison {
+    width: 100%;
+    grid-template-columns: 1fr;
+    gap: 14px;
+    padding: 12px;
+  }
+
+  .price-card-comparison .price-plan {
+    width: 100%;
+    padding: 22px 18px;
   }
 
   .workspace,
