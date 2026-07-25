@@ -1921,6 +1921,22 @@ select:focus {
   white-space: pre-wrap;
 }
 
+.text-component {
+  padding: 8px 2px;
+}
+
+.custom-text-content {
+  width: 100%;
+  min-height: 1.3em;
+  line-height: 1.25;
+  white-space: pre-wrap;
+}
+
+.text-style-editor {
+  display: grid;
+  gap: 10px;
+}
+
 .timer-component {
   display: grid;
   gap: 12px;
@@ -3059,11 +3075,6 @@ select:focus {
   margin: 0 auto;
   padding: 70px 0 90px;
   text-align: center;
-}
-
-.plane {
-  margin-bottom: 28px;
-  font-size: 54px;
 }
 
 .result-kicker {

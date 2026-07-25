@@ -554,6 +554,7 @@
           "Vídeo": { content: "", label: "Cole aqui o link ou código de incorporação da Vturb" },
           "Imagem": { content: "", label: "Escolha uma imagem ou cole uma URL" },
           "Botão": { content: "Quero continuar", url: "#" },
+          "Texto": { content: "Digite seu texto", fontFamily: "Inter", fontSize: "28", fontWeight: "600", textAlign: "center", color: "#172033" },
           "Espaço": { content: "48" },
           "Timer": { content: "10", action: "show", targetIds: [], showCountdown: false, behaviorVersion: 2 },
           "Script": { content: "" }
@@ -1780,6 +1781,36 @@
         `;
       }
 
+      function textComponentEditor(component) {
+        const font = component.fontFamily || "Inter";
+        return `
+          <div class="text-style-editor">
+            <label class="field"><span>Texto</span><textarea rows="4" data-stage-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "")}</textarea></label>
+            <label class="field"><span>Fonte</span><select data-stage-component="${component.id}" data-component-key="fontFamily">
+              <option value="Inter" ${font === "Inter" ? "selected" : ""}>Inter</option>
+              <option value="Playfair Display" ${font === "Playfair Display" ? "selected" : ""}>Playfair Display</option>
+              <option value="Georgia" ${font === "Georgia" ? "selected" : ""}>Georgia</option>
+              <option value="Arial" ${font === "Arial" ? "selected" : ""}>Arial</option>
+              <option value="system-ui" ${font === "system-ui" ? "selected" : ""}>Fonte do sistema</option>
+            </select></label>
+            <div class="field-row">
+              <label class="field"><span>Tamanho</span><input type="number" min="10" max="120" value="${escapeAttr(component.fontSize || "28")}" data-stage-component="${component.id}" data-component-key="fontSize"></label>
+              <label class="field"><span>Peso</span><select data-stage-component="${component.id}" data-component-key="fontWeight">
+                ${[["400", "Normal"], ["500", "Médio"], ["600", "Seminegrito"], ["700", "Negrito"], ["800", "Extra negrito"], ["900", "Máximo"]].map(([value, label]) => `<option value="${value}" ${(component.fontWeight || "600") === value ? "selected" : ""}>${label}</option>`).join("")}
+              </select></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>Alinhamento</span><select data-stage-component="${component.id}" data-component-key="textAlign">
+                <option value="left" ${component.textAlign === "left" ? "selected" : ""}>Esquerda</option>
+                <option value="center" ${(component.textAlign || "center") === "center" ? "selected" : ""}>Centro</option>
+                <option value="right" ${component.textAlign === "right" ? "selected" : ""}>Direita</option>
+              </select></label>
+              <label class="field"><span>Cor</span><input type="color" value="${escapeAttr(component.color || "#172033")}" data-stage-component="${component.id}" data-component-key="color"></label>
+            </div>
+          </div>
+        `;
+      }
+
       function stageComponentsEditor(quiz, stage) {
         const components = quiz.stageComponents?.[stageKey(quiz, stage)] || [];
         const key = stageKey(quiz, stage);
@@ -1803,7 +1834,7 @@
                   <strong>${escapeHtml(component.type)}</strong>
                   <button type="button" class="text-btn" data-action="remove-stage-component" data-component-id="${component.id}">Remover</button>
                 </div>
-                ${component.type === "Preço" ? priceComponentEditor(component) : component.type === "Imagem" ? `
+                ${component.type === "Preço" ? priceComponentEditor(component) : component.type === "Texto" ? textComponentEditor(component) : component.type === "Imagem" ? `
                   ${imageUploadControls(component)}
                   <label class="field">
                     <span>Ou use uma URL da imagem</span>
@@ -1878,6 +1909,17 @@
       function priceEditable(component, key, preview, className = "", fallback = "") {
         const value = component[key] || fallback;
         return `<span class="${className}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="${key}">${escapeHtml(value)}</span>`;
+      }
+
+      function componentFontFamily(value) {
+        const fonts = {
+          "Inter": "Inter, sans-serif",
+          "Playfair Display": "Playfair Display, Georgia, serif",
+          "Georgia": "Georgia, serif",
+          "Arial": "Arial, sans-serif",
+          "system-ui": "system-ui, sans-serif"
+        };
+        return fonts[value] || fonts.Inter;
       }
 
       function numericPrice(value) {
@@ -1971,6 +2013,12 @@
           return `<div class="custom-component video-component${ratioClass}${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${player}${inlineEditor}</div>`;
         }
         if (component.type === "Preço") return `<div class="custom-component price-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${priceCardMarkup(component, preview)}</div>`;
+        if (component.type === "Texto") {
+          const fontSize = Math.max(10, Math.min(120, Number(component.fontSize) || 28));
+          const weight = ["400", "500", "600", "700", "800", "900"].includes(String(component.fontWeight)) ? component.fontWeight : "600";
+          const align = ["left", "center", "right"].includes(component.textAlign) ? component.textAlign : "center";
+          return `<div class="custom-component text-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<div class="custom-text-content" style="font-family:${escapeAttr(componentFontFamily(component.fontFamily))};font-size:${fontSize}px;font-weight:${weight};text-align:${align};color:${escapeAttr(component.color || "#172033")}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Digite seu texto")}</div></div>`;
+        }
         if (component.type === "Imagem") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${component.content ? `<img class="custom-image" src="${escapeAttr(component.content)}" alt="">` : `<div class="component-placeholder">Imagem</div>`}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor image-inline-editor">${imageUploadControls(component, true)}<input value="${escapeAttr(component.content?.startsWith("data:") ? "" : (component.content || ""))}" placeholder="Ou cole a URL da imagem" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
         if (component.type === "Botão") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<a class="diagnostic-btn custom-button" href="${escapeAttr(component.url || "#")}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Botão")}</a>${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.url || "")}" placeholder="Link do botão" data-inline-component="${component.id}" data-component-key="url"></div>` : ""}</div>`;
         if (component.type === "Espaço") return `<div class="custom-component spacer-component${selected}" style="height:${Math.max(8, Number(component.content) || 48)}px"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input type="number" min="8" value="${escapeAttr(component.content || "48")}" aria-label="Altura do espaço" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
@@ -2543,7 +2591,6 @@
           <section class="quiz-page" style="--theme:${escapeAttr(quiz.theme)}">
             <div class="result-page">
               ${stageComponentsView(quiz, "result", preview, 0)}
-              <div class="plane">✈️</div>
               <p class="result-kicker">Seu perfil</p>
               <h2 data-delay-target="result-title" contenteditable="${preview ? "true" : "false"}" data-map-result="${resultIndex}" data-map-result-key="title">${escapeHtml(firstPart)} <span>${escapeHtml(lastWord)}</span></h2>
               ${stageComponentsView(quiz, "result", preview, 1)}
