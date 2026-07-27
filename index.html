@@ -114,35 +114,13 @@
         results: [
           {
             profile: "travado",
-            title: "Sonhador(a) Travado",
+            title: "Viajante Travado",
             text: "Sua viagem é possível. Mas hoje ela está travada não pela falta de dinheiro, e sim pela falta de um plano claro de quanto guardar e até quando. Além disso, com base nos seus dados, essa viagem pode continuar sendo só um sonho por mais 1 a 2 anos.",
             bullets: [
               "O cálculo de quanto você precisa guardar por mês pra qualquer destino e data.",
               "Mostra sua evolução de economia em tempo real.",
               "Alerta quando você está fora da meta.",
               "Organiza os gastos da viagem (passagem, hospedagem, extras)."
-            ]
-          },
-          {
-            profile: "organizando",
-            title: "Viajante em Organização",
-            text: "Você já tem vontade e até alguma noção do caminho, mas ainda falta um método simples para transformar a viagem em meta com data marcada.",
-            bullets: [
-              "Meta de economia mensal com destino e prazo.",
-              "Clareza sobre o custo total antes de comprar.",
-              "Organização visual para manter constância.",
-              "Plano simples para não depender de memória."
-            ]
-          },
-          {
-            profile: "pronto",
-            title: "Viajante Pronto(a)",
-            text: "Você está muito perto de tirar a viagem do papel. O que falta agora é colocar números, datas e acompanhamento para comprar com mais segurança.",
-            bullets: [
-              "Cálculo mensal para decidir rápido.",
-              "Organização de gastos antes da compra.",
-              "Acompanhamento da meta até a data da viagem.",
-              "Menos dúvida e mais ação."
             ]
           }
         ]
@@ -172,11 +150,41 @@
         remoteError: "",
         publicQuizLoads: {},
         unpublishedQuizIds: new Set(),
-        priceTemplatePicker: false
+        priceTemplatePicker: false,
+        textTemplatePicker: false,
+        previewDevice: "desktop"
       };
+      let savedTextRange = null;
+      let savedTextComponentId = null;
 
       function clone(value) {
         return JSON.parse(JSON.stringify(value));
+      }
+
+      function sanitizeRichText(html) {
+        const template = document.createElement("template");
+        template.innerHTML = String(html || "");
+        [...template.content.querySelectorAll("p, div")].forEach((element) => {
+          const separator = document.createElement("br");
+          const spacer = document.createElement("br");
+          element.replaceWith(...element.childNodes, separator, spacer);
+        });
+        const allowedTags = new Set(["SPAN", "B", "STRONG", "I", "EM", "U", "BR", "UL", "OL", "LI"]);
+        const allowedStyles = new Set(["color", "font-family", "font-size", "font-weight", "font-style", "text-decoration", "letter-spacing", "line-height"]);
+        [...template.content.querySelectorAll("*")].forEach((element) => {
+          if (!allowedTags.has(element.tagName)) {
+            element.replaceWith(...element.childNodes);
+            return;
+          }
+          const safeStyles = [];
+          for (const property of allowedStyles) {
+            const value = element.style.getPropertyValue(property);
+            if (value && !/[<>{};]/.test(value)) safeStyles.push(`${property}:${value}`);
+          }
+          [...element.attributes].forEach((attribute) => element.removeAttribute(attribute.name));
+          if (safeStyles.length) element.setAttribute("style", safeStyles.join(";"));
+        });
+        return template.innerHTML;
       }
 
       function loadQuizzes() {
@@ -518,6 +526,13 @@
         clean.slug = clean.slug || slugify(clean.title || clean.id || "quiz");
         clean.questions = (clean.questions || []).filter(Boolean);
         clean.results = (clean.results || []).filter(Boolean);
+        if (clean.id === defaultQuiz.id) {
+          const lockedResult = clean.results.find((result) => result.profile === "travado")
+            || clone(defaultQuiz.results[0]);
+          lockedResult.profile = "travado";
+          lockedResult.title = "Viajante Travado";
+          clean.results = [lockedResult];
+        }
         clean.questions.forEach((question) => {
           question.options = (question.options || []).filter(Boolean);
         });
@@ -593,6 +608,31 @@
         }
       };
 
+      const textTemplates = {
+        title: { name: "Título principal", category: "Títulos", content: "Descubra seu perfil", tag: "h1", fontSize: "48", fontWeight: "800", textAlign: "center", lineHeight: "1.1" },
+        titleSubtitle: { name: "Título + subtítulo", category: "Títulos", content: "Descubra seu perfil\nResponda às perguntas para receber seu diagnóstico.", tag: "h2", fontSize: "36", fontWeight: "800", textAlign: "center", lineHeight: "1.25" },
+        question: { name: "Pergunta em destaque", category: "Perguntas", content: "Qual é o seu principal objetivo?", tag: "h2", fontSize: "34", fontWeight: "700", textAlign: "center", lineHeight: "1.2" },
+        normal: { name: "Texto normal", category: "Textos", content: "Escreva aqui uma mensagem clara para orientar quem está respondendo.", tag: "p", fontSize: "20", fontWeight: "400", textAlign: "center", lineHeight: "1.5" },
+        explanatory: { name: "Texto explicativo", category: "Textos", content: "Aqui você pode explicar o contexto e ajudar a pessoa a entender o próximo passo.", tag: "p", fontSize: "20", fontWeight: "500", textAlign: "center", lineHeight: "1.5" },
+        highlight: { name: "Texto com destaque", category: "Destaques", content: "Dica: responda com sinceridade para obter um resultado mais preciso.", tag: "p", fontSize: "19", fontWeight: "600", textAlign: "left", lineHeight: "1.45", color: "#554be8", accent: true },
+        category: { name: "Categoria", category: "Categorias", content: "Organização de Viagem", tag: "p", fontSize: "18", fontWeight: "700", textAlign: "left", lineHeight: "1.3" },
+        quote: { name: "Citação", category: "Destaques", content: "“O primeiro passo para realizar uma viagem é transformar o sonho em um plano.”", tag: "blockquote", fontSize: "22", fontWeight: "600", textAlign: "center", lineHeight: "1.45" },
+        result: { name: "Resultado em destaque", category: "Resultados", content: "Seu perfil é: VIAJANTE TRAVADO", tag: "h2", fontSize: "38", fontWeight: "800", textAlign: "center", lineHeight: "1.2", color: "#554be8" },
+        success: { name: "Mensagem de sucesso", category: "Resultados", content: "Parabéns!\nVocê concluiu o quiz.", tag: "h2", fontSize: "32", fontWeight: "700", textAlign: "center", lineHeight: "1.3" },
+        cta: { name: "Chamada para ação", category: "CTA", content: "Clique no botão abaixo para continuar", tag: "p", fontSize: "22", fontWeight: "700", textAlign: "center", lineHeight: "1.35" },
+        benefitList: {
+          name: "Lista de benefícios",
+          category: "Textos",
+          content: "Benefício principal\nSegundo benefício\nTerceiro benefício\nQuarto benefício",
+          richHtml: "<ul><li>Benefício principal</li><li>Segundo benefício</li><li>Terceiro benefício</li><li>Quarto benefício</li></ul>",
+          tag: "div",
+          fontSize: "21",
+          fontWeight: "500",
+          textAlign: "left",
+          lineHeight: "1.4"
+        }
+      };
+
       function addPriceTemplate(templateId) {
         const template = priceTemplates[templateId] || priceTemplates.simple;
         const quiz = activeQuiz();
@@ -620,7 +660,65 @@
           render();
           return;
         }
+        if (type === "Texto") {
+          state.textTemplatePicker = true;
+          render();
+          return;
+        }
         addStageComponent(type);
+      }
+
+      function addTextTemplate(templateId) {
+        const template = textTemplates[templateId] || textTemplates.normal;
+        const quiz = activeQuiz();
+        const key = stageKey(quiz);
+        if (key === "publication") return;
+        quiz.stageComponents ||= {};
+        const component = {
+          id: uid("component"),
+          type: "Texto",
+          position: 4,
+          fontFamily: "Inter",
+          color: "#172033",
+          letterSpacing: "0",
+          marginTop: "0",
+          marginBottom: "0",
+          maxWidth: "100",
+          ...clone(template)
+        };
+        delete component.name;
+        delete component.category;
+        (quiz.stageComponents[key] ||= []).push(component);
+        state.selectedComponentId = component.id;
+        state.textTemplatePicker = false;
+        saveQuizzes();
+        render();
+      }
+
+      function textTemplateModal() {
+        return `
+          <div class="price-template-backdrop">
+            <section class="price-template-modal text-template-modal" role="dialog" aria-modal="true" aria-label="Templates de texto">
+              <header>
+                <div><span>Componente</span><h2>Templates de Texto</h2><p>Escolha um modelo pronto e personalize na lateral direita.</p></div>
+                <button type="button" data-action="close-text-templates" aria-label="Fechar">×</button>
+              </header>
+              <div class="price-template-filters"><span class="active">Todos</span><span>Títulos</span><span>Perguntas</span><span>Textos</span><span>Destaques</span><span>Resultados</span><span>CTA</span></div>
+              <div class="price-template-grid text-template-grid">
+                ${Object.entries(textTemplates).map(([id, template]) => `
+                  <article class="price-template-option text-template-option">
+                    <div class="text-template-preview ${template.accent ? "accent" : ""}" style="text-align:${escapeAttr(template.textAlign)};color:${escapeAttr(template.color || "#172033")}">
+                      <div style="font-size:${Math.max(15, Math.min(27, Number(template.fontSize) * 0.58))}px;font-weight:${escapeAttr(template.fontWeight)};line-height:${escapeAttr(template.lineHeight)}">${escapeHtml(template.content).replace(/\n/g, "<br>")}</div>
+                    </div>
+                    <strong>${escapeHtml(template.name)}</strong>
+                    <small>${escapeHtml(template.category)}</small>
+                    <button type="button" data-action="choose-text-template" data-template="${id}">Usar template</button>
+                  </article>
+                `).join("")}
+              </div>
+            </section>
+          </div>
+        `;
       }
 
       function priceTemplatePreview(template, compact = false) {
@@ -658,7 +756,9 @@
         quiz.stageComponents[key] = (quiz.stageComponents?.[key] || []).filter((item) => item.id !== id);
         state.selectedComponentId = null;
         saveQuizzes();
-        render();
+        const panel = document.querySelector(".settings-panel");
+        if (panel) panel.innerHTML = "";
+        refreshAdminCanvas();
       }
 
       function stageComponentById(id) {
@@ -680,7 +780,8 @@
         quiz.hiddenElements[key] ||= [];
         if (!quiz.hiddenElements[key].includes(targetId)) quiz.hiddenElements[key].push(targetId);
         saveQuizzes();
-        render();
+        if (adminRoute() && state.adminTab === "builder" && state.builderView === "page") refreshAdminCanvas();
+        else render();
       }
 
       function restoreStageElement(targetId) {
@@ -689,7 +790,8 @@
         quiz.hiddenElements ||= {};
         quiz.hiddenElements[key] = (quiz.hiddenElements[key] || []).filter((id) => id !== targetId);
         saveQuizzes();
-        render();
+        if (adminRoute() && state.adminTab === "builder" && state.builderView === "page") refreshAdminCanvas();
+        else render();
       }
 
       function applyHiddenStageElements(quiz, key, root = document) {
@@ -788,7 +890,7 @@
         const component = components[from];
         component.position = Math.max(0, Math.min(4, Number(component.position ?? 4) + direction));
         saveQuizzes();
-        render();
+        refreshAdminCanvas();
       }
 
       function reorderStageComponent(draggedId, targetId) {
@@ -801,7 +903,7 @@
         const [component] = components.splice(from, 1);
         components.splice(to, 0, component);
         saveQuizzes();
-        render();
+        refreshAdminCanvas();
       }
 
       function setStageComponentPosition(id, position) {
@@ -1157,6 +1259,12 @@
       }
 
       function render() {
+        const previousScroll = {
+          window: window.scrollY,
+          canvas: document.querySelector(".canvas-area")?.scrollTop || 0,
+          components: document.querySelector(".component-sidebar")?.scrollTop || 0,
+          settings: document.querySelector(".settings-scroll")?.scrollTop || 0
+        };
         const routeParams = new URLSearchParams(window.location.search);
         const routeQuiz = getPublicQuiz();
         const publicSlug = routeParams.get("quiz") || (routeParams.has("q") && routeQuiz ? slugFor(routeQuiz) : "");
@@ -1191,6 +1299,15 @@
           lastPublicScrollKey = "";
           fitAdminCanvas();
           renderFunnelConnections();
+          window.requestAnimationFrame(() => {
+            window.scrollTo({ top: previousScroll.window, left: 0, behavior: "auto" });
+            const canvas = document.querySelector(".canvas-area");
+            const components = document.querySelector(".component-sidebar");
+            const settings = document.querySelector(".settings-scroll");
+            if (canvas) canvas.scrollTop = previousScroll.canvas;
+            if (components) components.scrollTop = previousScroll.components;
+            if (settings) settings.scrollTop = previousScroll.settings;
+          });
         }
       }
 
@@ -1233,9 +1350,25 @@
           const frame = document.querySelector(".selected-outline");
           const page = frame?.querySelector(".canvas-live-page");
           if (!frame || !page) return;
+          const isMobile = state.previewDevice === "mobile";
+          const targetWidth = isMobile ? 390 : 1040;
+          page.style.width = `${targetWidth}px`;
           const availableWidth = Math.max(320, frame.clientWidth - 4);
-          page.style.zoom = String(Math.min(1, availableWidth / 1040));
+          page.style.zoom = String(Math.min(1, availableWidth / targetWidth));
         });
+      }
+
+      function setPreviewDevice(device) {
+        state.previewDevice = device === "mobile" ? "mobile" : "desktop";
+        const preview = document.querySelector(".canvas-preview");
+        if (preview) {
+          preview.classList.toggle("device-mobile", state.previewDevice === "mobile");
+          preview.classList.toggle("device-desktop", state.previewDevice === "desktop");
+        }
+        document.querySelectorAll("[data-action='set-preview-device']").forEach((button) => {
+          button.classList.toggle("active", button.dataset.device === state.previewDevice);
+        });
+        fitAdminCanvas();
       }
 
       function refreshAdminCanvas() {
@@ -1256,8 +1389,8 @@
         frame.querySelectorAll("[data-action]").forEach((element) => {
           element.addEventListener("click", (event) => {
             const action = element.dataset.action;
+            if (action) event.preventDefault();
             if (element.closest(".funnel-page-preview") && action?.startsWith("preview-")) {
-              event.preventDefault();
               return;
             }
             if (action === "preview-start") state.adminStage = Math.min(1, activeQuiz().questions.length);
@@ -1265,16 +1398,17 @@
             if (action === "preview-reset") state.adminStage = 0;
             if (action === "preview-checkout-click") window.open(element.href, "_blank", "noopener");
             if (action === "select-custom-component") {
-              if (event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, .inline-timer-editor, input, textarea, select, [contenteditable='true']")) return;
-              state.selectedComponentId = element.dataset.componentId;
+              const clickedEditableText = event.target.closest(".custom-text-content");
+              if (!clickedEditableText && event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, .inline-timer-editor, input, textarea, select, [contenteditable='true']")) return;
+              selectStageComponent(element.dataset.componentId);
+              return;
             }
             if (action === "remove-stage-component") removeStageComponent(element.dataset.componentId);
             if (action === "clear-stage-image") clearStageImage(element.dataset.componentId);
             if (action === "restore-stage-element") restoreStageElement(element.dataset.targetId);
             if (action === "move-custom-up") moveStageComponent(element.dataset.componentId, -1);
             if (action === "move-custom-down") moveStageComponent(element.dataset.componentId, 1);
-            event.preventDefault();
-            if (!["remove-stage-component", "clear-stage-image", "move-custom-up", "move-custom-down"].includes(action)) render();
+            if (!["remove-stage-component", "clear-stage-image", "move-custom-up", "move-custom-down", "select-custom-component"].includes(action)) render();
           });
         });
       }
@@ -1288,10 +1422,26 @@
             component[input.dataset.componentKey] = input.matches("textarea, input, select")
               ? input.value
               : (input.classList.contains("price-feature-copy") ? input.innerText : input.textContent);
+            if (input.classList.contains("custom-text-content")) {
+              component.content = input.innerText;
+              component.richHtml = sanitizeRichText(input.innerHTML);
+            }
             saveQuizzes();
           });
           if (input.matches("textarea, input, select")) input.addEventListener("change", refreshAdminCanvas);
-          input.addEventListener("click", (event) => event.stopPropagation());
+          input.addEventListener("click", (event) => {
+            if (!input.classList.contains("custom-text-content")) {
+              event.stopPropagation();
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            selectStageComponent(input.dataset.inlineComponent);
+          });
+          if (input.classList.contains("custom-text-content")) {
+            input.addEventListener("mouseup", () => rememberTextSelection(input));
+            input.addEventListener("keyup", () => rememberTextSelection(input));
+          }
         });
         root.querySelectorAll("[data-image-upload]").forEach((input) => {
           input.addEventListener("change", () => uploadStageImage(input));
@@ -1379,15 +1529,11 @@
 
       function componentCatalog() {
         return [
-          ["⚠", "Alerta"],
-          ["▤", "Argumentos"],
-          ["☰", "Nível"],
           ["❞", "Depoimentos"],
           ["▭", "Botão"],
           ["▣", "Captura"],
           ["↕", "Espaço"],
           ["◫", "Gráficos"],
-          ["▥", "Cartesiano"],
           ["▧", "Imagem"],
           ["○", "Loading"],
           ["☑", "Opções"],
@@ -1441,6 +1587,7 @@
 
       function ensureFlowConnections(quiz) {
         const keys = ["intro", ...quiz.questions.map((_, index) => `question:${index}`), "loading", "result", "publication"];
+        if (!Array.isArray(quiz.flowConnections)) quiz.flowConnections = [];
         if (!quiz.flowConnections.length) {
           quiz.flowConnections = keys.slice(0, -1).flatMap((from, index) => {
             if (!from.startsWith("question:")) return [{ from, to: keys[index + 1], option: null }];
@@ -1520,19 +1667,6 @@
               <strong>Editando: ${escapeHtml(stageNames[activeStage])}</strong>
             </div>
             <div class="builder-body">
-              <aside class="stage-sidebar">
-                <div class="stage-list">
-                  ${stageNames.map((stage, index) => `
-                    <button class="stage-item ${index === activeStage ? "active" : ""}" data-action="select-stage" data-stage="${index}">
-                      <span>=</span>
-                      ${escapeHtml(stage)}
-                      ${index === stageNames.length - 2 ? "<b>⋮</b>" : ""}
-                    </button>
-                  `).join("")}
-                </div>
-                <button class="add-stage" data-action="add-question">+ adicionar etapa</button>
-              </aside>
-
               <aside class="component-sidebar">
                 <button class="back-link">‹ voltar</button>
                 <div class="component-list">
@@ -1549,7 +1683,7 @@
                 </div>
                 <div class="canvas-progress"><span></span></div>
 
-                <div class="canvas-preview">
+                <div class="canvas-preview device-${state.previewDevice}">
                   <div class="selected-outline">
                     ${adminCanvasPreview(quiz)}
                   </div>
@@ -1559,31 +1693,7 @@
               </section>
 
               <aside class="settings-panel">
-                <div class="settings-tabs">
-                  <button class="active">Componente</button>
-                  <button>Estilo</button>
-                  <button>Exibição</button>
-                </div>
-
-                <form class="settings-scroll">
-                  <label class="field">
-                    <span>Quiz ativo</span>
-                    <select data-admin-select>
-                      ${state.quizzes.map((item) => `<option value="${item.id}" ${item.id === quiz.id ? "selected" : ""}>${escapeHtml(item.title)}</option>`).join("")}
-                    </select>
-                  </label>
-
-                  <div class="quick-actions">
-                    <button type="button" class="secondary-btn" data-action="add-quiz">Novo</button>
-                    <button type="button" class="secondary-btn" data-action="duplicate-quiz" data-id="${quiz.id}">Duplicar</button>
-                    <button type="button" class="danger-btn" data-action="remove-quiz" data-id="${quiz.id}">Excluir</button>
-                  </div>
-
-                  <div class="settings-group">
-                    ${adminSettingsPanel(quiz, activeStage, link)}
-                    ${stageComponentsEditor(quiz, activeStage)}
-                  </div>
-                </form>
+                ${selectedComponentSettingsMarkup(quiz, activeStage)}
               </aside>
             </div>
         `;
@@ -1610,7 +1720,10 @@
               </nav>
 
               <div class="builder-actions">
-                <button class="tool-icon" aria-label="Mobile">▯</button>
+                <div class="device-switcher" aria-label="Modo de visualização">
+                  <button class="tool-icon ${state.previewDevice === "desktop" ? "active" : ""}" type="button" data-action="set-preview-device" data-device="desktop" aria-label="Visualizar no computador" title="Computador">▰</button>
+                  <button class="tool-icon ${state.previewDevice === "mobile" ? "active" : ""}" type="button" data-action="set-preview-device" data-device="mobile" aria-label="Visualizar no celular" title="Celular">▯</button>
+                </div>
                 <button class="tool-icon" aria-label="Compartilhar" data-action="copy-link">⌘</button>
                 <a class="preview-btn" href="${escapeAttr(previewUrl())}" target="_blank" rel="noopener">▷ Ver prévia</a>
                 <button class="save-btn" data-action="save-quiz">Salvar rascunho</button>
@@ -1620,6 +1733,7 @@
             ${remoteStatusView()}
             ${content}
             ${state.priceTemplatePicker ? priceTemplateModal() : ""}
+            ${state.textTemplatePicker ? textTemplateModal() : ""}
           </main>
         `;
       }
@@ -1651,7 +1765,8 @@
         }
 
         if (stage === quiz.questions.length + 2) {
-          const result = quiz.results[Math.min(state.adminResultIndex, quiz.results.length - 1)] || defaultQuiz.results[0];
+          const activeResultIndex = Math.min(state.adminResultIndex, quiz.results.length - 1);
+          const result = quiz.results[activeResultIndex] || defaultQuiz.results[0];
           return `
             <div class="canvas-live-page public-shell">
               ${resultView(quiz, result, true)}
@@ -1717,13 +1832,21 @@
         }
 
         if (stage === quiz.questions.length + 2) {
+          const activeResultIndex = Math.min(state.adminResultIndex, quiz.results.length - 1);
           return `
             <div class="section-title compact">
               <h3>Resultados</h3>
               <button type="button" class="secondary-btn" data-action="add-result">+ resultado</button>
             </div>
+            ${quiz.results.length > 1 ? `
+              <div class="component-chip-list">
+                ${quiz.results.map((item, index) => `
+                  <button type="button" class="component-chip ${index === activeResultIndex ? "active" : ""}" data-action="select-result" data-result-index="${index}">${escapeHtml(item.title || item.profile || `Resultado ${index + 1}`)}</button>
+                `).join("")}
+              </div>
+            ` : ""}
             <div class="stack">
-              ${quiz.results.map((result, index) => resultEditor(result, index)).join("")}
+              ${quiz.results[activeResultIndex] ? resultEditor(quiz.results[activeResultIndex], activeResultIndex) : ""}
             </div>
           `;
         }
@@ -1783,9 +1906,13 @@
 
       function textComponentEditor(component) {
         const font = component.fontFamily || "Inter";
+        const tag = ["h1", "h2", "h3", "p", "blockquote", "span", "div"].includes(component.tag) ? component.tag : "p";
         return `
           <div class="text-style-editor">
             <label class="field"><span>Texto</span><textarea rows="4" data-stage-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "")}</textarea></label>
+            <label class="field"><span>Tag</span><select data-stage-component="${component.id}" data-component-key="tag">
+              ${[["h1", "H1 — Título principal"], ["h2", "H2 — Título"], ["h3", "H3 — Subtítulo"], ["p", "P — Parágrafo"], ["blockquote", "Citação"], ["span", "Texto curto"], ["div", "Bloco de texto/lista"]].map(([value, label]) => `<option value="${value}" ${tag === value ? "selected" : ""}>${label}</option>`).join("")}
+            </select></label>
             <label class="field"><span>Fonte</span><select data-stage-component="${component.id}" data-component-key="fontFamily">
               <option value="Inter" ${font === "Inter" ? "selected" : ""}>Inter</option>
               <option value="Playfair Display" ${font === "Playfair Display" ? "selected" : ""}>Playfair Display</option>
@@ -1804,52 +1931,142 @@
                 <option value="left" ${component.textAlign === "left" ? "selected" : ""}>Esquerda</option>
                 <option value="center" ${(component.textAlign || "center") === "center" ? "selected" : ""}>Centro</option>
                 <option value="right" ${component.textAlign === "right" ? "selected" : ""}>Direita</option>
+                <option value="justify" ${component.textAlign === "justify" ? "selected" : ""}>Justificado</option>
               </select></label>
               <label class="field"><span>Cor</span><input type="color" value="${escapeAttr(component.color || "#172033")}" data-stage-component="${component.id}" data-component-key="color"></label>
             </div>
+            <div class="field-row">
+              <label class="field"><span>Altura da linha</span><input type="number" min="0.8" max="3" step="0.05" value="${escapeAttr(component.lineHeight || "1.25")}" data-stage-component="${component.id}" data-component-key="lineHeight"></label>
+              <label class="field"><span>Espaçamento das letras</span><input type="number" min="-5" max="20" step="0.1" value="${escapeAttr(component.letterSpacing || "0")}" data-stage-component="${component.id}" data-component-key="letterSpacing"></label>
+            </div>
+            <details class="advanced-text-options">
+              <summary>Avançado</summary>
+              <div class="field-row">
+                <label class="field"><span>Margem superior</span><input type="number" min="0" max="200" value="${escapeAttr(component.marginTop || "0")}" data-stage-component="${component.id}" data-component-key="marginTop"></label>
+                <label class="field"><span>Margem inferior</span><input type="number" min="0" max="200" value="${escapeAttr(component.marginBottom || "0")}" data-stage-component="${component.id}" data-component-key="marginBottom"></label>
+              </div>
+              <label class="field"><span>Largura máxima (%)</span><input type="number" min="20" max="100" value="${escapeAttr(component.maxWidth || "100")}" data-stage-component="${component.id}" data-component-key="maxWidth"></label>
+            </details>
           </div>
         `;
       }
 
       function stageComponentsEditor(quiz, stage) {
         const components = quiz.stageComponents?.[stageKey(quiz, stage)] || [];
-        const key = stageKey(quiz, stage);
-        const removed = quiz.hiddenElements?.[key] || [];
-        const removedLabels = Object.fromEntries(timerTargetOptions(quiz, stage).filter(([id]) => !id.startsWith("component:")));
-        const removedPanel = removed.length ? `
-          <div class="removed-elements-panel">
-            <strong>Elementos removidos</strong>
-            <p>Você pode restaurar qualquer item desta página.</p>
-            ${removed.map((id) => `<button type="button" data-action="restore-stage-element" data-target-id="${escapeAttr(id)}">Restaurar ${escapeHtml(removedLabels[id] || id)}</button>`).join("")}
-          </div>
-        ` : "";
-        if (!components.length) return `${removedPanel}<p class="settings-note component-help">Passe o mouse sobre qualquer elemento da página e clique no × para removê-lo.</p>`;
+        const selected = components.find((component) => component.id === state.selectedComponentId);
+        if (!selected) return "";
         return `
-          ${removedPanel}
           <div class="added-components">
-            <h3>Componentes adicionados</h3>
-            ${components.map((component) => `
-              <article class="editor-card ${state.selectedComponentId === component.id ? "selected-component-editor" : ""}">
-                <div class="card-head">
-                  <strong>${escapeHtml(component.type)}</strong>
-                  <button type="button" class="text-btn" data-action="remove-stage-component" data-component-id="${component.id}">Remover</button>
-                </div>
-                ${component.type === "Preço" ? priceComponentEditor(component) : component.type === "Texto" ? textComponentEditor(component) : component.type === "Imagem" ? `
-                  ${imageUploadControls(component)}
-                  <label class="field">
-                    <span>Ou use uma URL da imagem</span>
-                    <input placeholder="https://exemplo.com/imagem.jpg" value="${escapeAttr(component.content?.startsWith("data:") ? "" : (component.content || ""))}" data-stage-component="${component.id}" data-component-key="content">
-                  </label>
-                ` : component.type === "Timer" ? timerComponentEditor(quiz, stage, component) : `<label class="field">
-                  <span>${component.type === "Vídeo" ? "Link ou código embed da Vturb" : component.type === "Imagem" ? "URL da imagem" : "Conteúdo"}</span>
-                  <textarea rows="5" placeholder="${escapeAttr(component.label || "Digite o conteúdo")}" data-stage-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "")}</textarea>
-                </label>`}
-                ${component.type === "Botão" ? `<label class="field"><span>Link do botão</span><input value="${escapeAttr(component.url || "#")}" data-stage-component="${component.id}" data-component-key="url"></label>` : ""}
-                ${component.type === "Vídeo" ? `<label class="field"><span>Formato</span><select data-stage-component="${component.id}" data-component-key="aspectRatio"><option value="16:9" ${component.aspectRatio !== "9:16" ? "selected" : ""}>Horizontal 16:9</option><option value="9:16" ${component.aspectRatio === "9:16" ? "selected" : ""}>Reels 9:16</option></select></label>` : ""}
-              </article>
-            `).join("")}
+            <article class="editor-card selected-component-editor">
+              <div class="card-head">
+                <strong>${escapeHtml(selected.type)}</strong>
+                <button type="button" class="text-btn" data-action="remove-stage-component" data-component-id="${selected.id}">Remover</button>
+              </div>
+              ${selected.type === "Preço" ? priceComponentEditor(selected) : selected.type === "Texto" ? textComponentEditor(selected) : selected.type === "Imagem" ? `
+                ${imageUploadControls(selected)}
+                <label class="field">
+                  <span>Ou use uma URL da imagem</span>
+                  <input placeholder="https://exemplo.com/imagem.jpg" value="${escapeAttr(selected.content?.startsWith("data:") ? "" : (selected.content || ""))}" data-stage-component="${selected.id}" data-component-key="content">
+                </label>
+              ` : selected.type === "Timer" ? timerComponentEditor(quiz, stage, selected) : `<label class="field">
+                <span>${selected.type === "Vídeo" ? "Link ou código embed da Vturb" : selected.type === "Imagem" ? "URL da imagem" : "Conteúdo"}</span>
+                <textarea rows="5" placeholder="${escapeAttr(selected.label || "Digite o conteúdo")}" data-stage-component="${selected.id}" data-component-key="content">${escapeHtml(selected.content || "")}</textarea>
+              </label>`}
+              ${selected.type === "Botão" ? `<label class="field"><span>Link do botão</span><input value="${escapeAttr(selected.url || "#")}" data-stage-component="${selected.id}" data-component-key="url"></label>` : ""}
+              ${selected.type === "Vídeo" ? `<label class="field"><span>Formato</span><select data-stage-component="${selected.id}" data-component-key="aspectRatio"><option value="16:9" ${selected.aspectRatio !== "9:16" ? "selected" : ""}>Horizontal 16:9</option><option value="9:16" ${selected.aspectRatio === "9:16" ? "selected" : ""}>Reels 9:16</option></select></label>` : ""}
+            </article>
           </div>
         `;
+      }
+
+      function selectedComponentSettingsMarkup(quiz, stage = state.adminStage) {
+        if (!state.selectedComponentId) return "";
+        return `
+          <div class="settings-tabs">
+            <button type="button" class="active">Componente</button>
+          </div>
+          <div class="settings-scroll">
+            <div class="settings-group">
+              ${stageComponentsEditor(quiz, stage)}
+            </div>
+          </div>
+        `;
+      }
+
+      function bindSelectedComponentSettings(root) {
+        root.querySelector("[data-action='remove-stage-component']")?.addEventListener("click", (event) => {
+          event.preventDefault();
+          removeStageComponent(event.currentTarget.dataset.componentId);
+        });
+        root.querySelectorAll("[data-stage-component]").forEach((input) => {
+          input.addEventListener("input", () => {
+            const component = stageComponentById(input.dataset.stageComponent);
+            if (!component) return;
+            if (applyFormattingToTextSelection(component.id, input.dataset.componentKey, input.value)) return;
+            component[input.dataset.componentKey] = input.value;
+            saveQuizzes();
+            refreshAdminCanvas();
+          });
+        });
+      }
+
+      function rememberTextSelection(element) {
+        const selection = window.getSelection();
+        if (!selection?.rangeCount || selection.isCollapsed) return;
+        const range = selection.getRangeAt(0);
+        if (!element.contains(range.commonAncestorContainer)) return;
+        savedTextRange = range.cloneRange();
+        savedTextComponentId = element.dataset.inlineComponent;
+      }
+
+      function applyFormattingToTextSelection(componentId, key, value) {
+        const styleProperty = {
+          color: "color",
+          fontFamily: "fontFamily",
+          fontSize: "fontSize",
+          fontWeight: "fontWeight",
+          letterSpacing: "letterSpacing",
+          lineHeight: "lineHeight"
+        }[key];
+        if (!styleProperty || savedTextComponentId !== componentId || !savedTextRange || savedTextRange.collapsed) return false;
+        const text = document.querySelector(`.custom-text-content[data-inline-component="${CSS.escape(componentId)}"]`);
+        if (!text || !text.contains(savedTextRange.commonAncestorContainer)) return false;
+        const span = document.createElement("span");
+        const formattedValue = key === "fontSize" || key === "letterSpacing" ? `${Number(value) || 0}px` : value;
+        span.style[styleProperty] = formattedValue;
+        try {
+          const fragment = savedTextRange.extractContents();
+          span.appendChild(fragment);
+          savedTextRange.insertNode(span);
+          savedTextRange.selectNodeContents(span);
+          const selection = window.getSelection();
+          selection.removeAllRanges();
+          selection.addRange(savedTextRange);
+          const component = stageComponentById(componentId);
+          if (component) {
+            component.content = text.innerText;
+            component.richHtml = sanitizeRichText(text.innerHTML);
+            saveQuizzes();
+          }
+          savedTextRange = savedTextRange.cloneRange();
+          return true;
+        } catch (error) {
+          savedTextRange = null;
+          savedTextComponentId = null;
+          return false;
+        }
+      }
+
+      function selectStageComponent(id) {
+        const component = stageComponentById(id);
+        if (!component) return;
+        state.selectedComponentId = id;
+        document.querySelectorAll(".selected-custom-component").forEach((element) => element.classList.remove("selected-custom-component"));
+        document.querySelector(`[data-component-id="${CSS.escape(id)}"]`)?.classList.add("selected-custom-component");
+        const panel = document.querySelector(".settings-panel");
+        if (!panel) return;
+        panel.innerHTML = selectedComponentSettingsMarkup(activeQuiz(), state.adminStage);
+        bindSelectedComponentSettings(panel);
       }
 
       function timerTargetOptions(quiz, stage) {
@@ -1857,7 +2074,7 @@
         const common = {
           intro: [["intro-title", "Título"], ["intro-image", "Imagem principal"], ["intro-subtitle", "Subtítulo"], ["intro-cta", "Botão de começar"], ["intro-trust", "Selos de segurança"]],
           loading: [["loading-title", "Título do carregamento"], ["loading-progress", "Barra de progresso"], ["loading-social", "Depoimentos"]],
-          result: [["result-title", "Título do resultado"], ["result-diagnosis", "Diagnóstico"], ["result-organization-title", "Título: Precisa de organização"], ["result-copy", "Texto de venda"], ["result-benefits", "Benefícios"], ["result-cta", "Botão principal"]]
+          result: [["result-kicker", "Seu perfil"], ["result-title", "Título do resultado"], ["result-diagnosis", "Diagnóstico"], ["result-organization-title", "Título: Precisa de organização"], ["result-copy", "Texto de venda"], ["result-benefits", "Benefícios"], ["result-cta", "Botão principal"]]
         };
         const base = key.startsWith("question:")
           ? [["question-title", "Pergunta"], ["question-options", "Opções de resposta"]]
@@ -1989,7 +2206,7 @@
         const selected = preview && state.selectedComponentId === component.id ? " selected-custom-component" : "";
         const selectAttr = preview ? ` data-action="select-custom-component" data-component-id="${component.id}"` : "";
         const dragAttr = preview ? ` draggable="true" data-custom-draggable="${component.id}"` : "";
-        const toolbar = preview && state.selectedComponentId === component.id ? `
+        const toolbar = preview ? `
           <div class="canvas-component-toolbar" contenteditable="false">
             <span class="drag-handle" title="Arraste para mover">⠿</span>
             <button type="button" data-action="move-custom-up" data-component-id="${component.id}" title="Mover para cima">↑</button>
@@ -2016,8 +2233,16 @@
         if (component.type === "Texto") {
           const fontSize = Math.max(10, Math.min(120, Number(component.fontSize) || 28));
           const weight = ["400", "500", "600", "700", "800", "900"].includes(String(component.fontWeight)) ? component.fontWeight : "600";
-          const align = ["left", "center", "right"].includes(component.textAlign) ? component.textAlign : "center";
-          return `<div class="custom-component text-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<div class="custom-text-content" style="font-family:${escapeAttr(componentFontFamily(component.fontFamily))};font-size:${fontSize}px;font-weight:${weight};text-align:${align};color:${escapeAttr(component.color || "#172033")}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Digite seu texto")}</div></div>`;
+          const align = ["left", "center", "right", "justify"].includes(component.textAlign) ? component.textAlign : "center";
+          const tag = ["h1", "h2", "h3", "p", "blockquote", "span", "div"].includes(component.tag) ? component.tag : "p";
+          const lineHeight = Math.max(0.8, Math.min(3, Number(component.lineHeight) || 1.25));
+          const letterSpacing = Math.max(-5, Math.min(20, Number(component.letterSpacing) || 0));
+          const marginTop = Math.max(0, Math.min(200, Number(component.marginTop) || 0));
+          const marginBottom = Math.max(0, Math.min(200, Number(component.marginBottom) || 0));
+          const maxWidth = Math.max(20, Math.min(100, Number(component.maxWidth) || 100));
+          const accentClass = component.accent ? " text-accent" : "";
+          const textContent = component.richHtml ? sanitizeRichText(component.richHtml) : escapeHtml(component.content || "Digite seu texto");
+          return `<div class="custom-component text-component${accentClass}${selected}" style="margin-top:${marginTop}px;margin-bottom:${marginBottom}px"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<${tag} class="custom-text-content" style="font-family:${escapeAttr(componentFontFamily(component.fontFamily))};font-size:${fontSize}px;font-weight:${weight};text-align:${align};color:${escapeAttr(component.color || "#172033")};line-height:${lineHeight};letter-spacing:${letterSpacing}px;max-width:${maxWidth}%" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${textContent}</${tag}></div>`;
         }
         if (component.type === "Imagem") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${component.content ? `<img class="custom-image" src="${escapeAttr(component.content)}" alt="">` : `<div class="component-placeholder">Imagem</div>`}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor image-inline-editor">${imageUploadControls(component, true)}<input value="${escapeAttr(component.content?.startsWith("data:") ? "" : (component.content || ""))}" placeholder="Ou cole a URL da imagem" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
         if (component.type === "Botão") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<a class="diagnostic-btn custom-button" href="${escapeAttr(component.url || "#")}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Botão")}</a>${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.url || "")}" placeholder="Link do botão" data-inline-component="${component.id}" data-component-key="url"></div>` : ""}</div>`;
@@ -2591,7 +2816,7 @@
           <section class="quiz-page" style="--theme:${escapeAttr(quiz.theme)}">
             <div class="result-page">
               ${stageComponentsView(quiz, "result", preview, 0)}
-              <p class="result-kicker">Seu perfil</p>
+              <p class="result-kicker" data-delay-target="result-kicker">Seu perfil</p>
               <h2 data-delay-target="result-title" contenteditable="${preview ? "true" : "false"}" data-map-result="${resultIndex}" data-map-result-key="title">${escapeHtml(firstPart)} <span>${escapeHtml(lastWord)}</span></h2>
               ${stageComponentsView(quiz, "result", preview, 1)}
               <div class="diagnosis-box" data-delay-target="result-diagnosis" contenteditable="${preview ? "true" : "false"}" data-map-result="${resultIndex}" data-map-result-key="text">
@@ -2637,6 +2862,7 @@
         document.querySelectorAll("[data-action]").forEach((element) => {
           element.addEventListener("click", (event) => {
             const action = element.dataset.action;
+            if (action) event.preventDefault();
             if (action === "add-quiz") addQuiz();
             if (action === "select-admin-tab") {
               state.adminTab = element.dataset.tab || "home";
@@ -2658,6 +2884,9 @@
               state.mapZoom = 0.8;
               render();
             }
+            if (action === "set-preview-device") {
+              setPreviewDevice(element.dataset.device);
+            }
             if (action === "toggle-stage-connection") {
               const key = stageKey(activeQuiz(), Number(element.dataset.stage));
               activeQuiz().flowDisconnected ||= [];
@@ -2676,6 +2905,7 @@
             if (action === "open-stage-editor") {
               state.adminStage = Number(element.dataset.stage || 0);
               state.builderView = "page";
+              state.selectedComponentId = null;
               render();
             }
             if (action === "select-quiz") {
@@ -2690,6 +2920,7 @@
             if (action === "remove-quiz") removeQuiz(element.dataset.id);
             if (action === "select-stage") {
               state.adminStage = Number(element.dataset.stage || 0);
+              state.selectedComponentId = null;
               render();
             }
             if (action === "add-question") addQuestion();
@@ -2698,13 +2929,21 @@
             if (action === "remove-option") removeOption(Number(element.dataset.q), Number(element.dataset.o));
             if (action === "add-result") addResult();
             if (action === "remove-result") removeResult(Number(element.dataset.r));
+            if (action === "select-result") {
+              state.adminResultIndex = Number(element.dataset.resultIndex || 0);
+              render();
+            }
             if (action === "remove-stage-component") removeStageComponent(element.dataset.componentId);
             if (action === "clear-stage-image") clearStageImage(element.dataset.componentId);
             if (action === "restore-stage-element") restoreStageElement(element.dataset.targetId);
             if (action === "move-custom-up") moveStageComponent(element.dataset.componentId, -1);
             if (action === "move-custom-down") moveStageComponent(element.dataset.componentId, 1);
             if (action === "select-custom-component") {
-              if (event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, .inline-timer-editor, input, textarea, select, [contenteditable='true']")) return;
+              const clickedEditableText = event.target.closest(".custom-text-content");
+              if (!clickedEditableText && event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, .inline-timer-editor, input, textarea, select, [contenteditable='true']")) return;
+              selectStageComponent(element.dataset.componentId);
+            }
+            if (action === "select-stage-component-editor") {
               state.selectedComponentId = element.dataset.componentId;
               render();
             }
@@ -2734,6 +2973,11 @@
               render();
             }
             if (action === "choose-price-template") addPriceTemplate(element.dataset.template);
+            if (action === "close-text-templates") {
+              state.textTemplatePicker = false;
+              render();
+            }
+            if (action === "choose-text-template") addTextTemplate(element.dataset.template);
             if (action === "save-quiz") {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
               element.disabled = true;
@@ -2831,7 +3075,6 @@
               setCurrentRunIgnored(quiz, false);
               render();
             }
-            if (action) event.preventDefault();
           });
         });
 
@@ -2956,6 +3199,7 @@
             const components = activeQuiz().stageComponents?.[stageKey(activeQuiz())] || [];
             const component = components.find((item) => item.id === input.dataset.stageComponent);
             if (!component) return;
+            if (applyFormattingToTextSelection(component.id, input.dataset.componentKey, input.value)) return;
             component[input.dataset.componentKey] = input.value;
             saveQuizzes();
             refreshAdminCanvas();
@@ -2998,10 +3242,26 @@
             component[input.dataset.componentKey] = input.matches("textarea, input, select")
               ? input.value
               : (input.classList.contains("price-feature-copy") ? input.innerText : input.textContent);
+            if (input.classList.contains("custom-text-content")) {
+              component.content = input.innerText;
+              component.richHtml = sanitizeRichText(input.innerHTML);
+            }
             saveQuizzes();
           });
           if (input.matches("textarea, input, select")) input.addEventListener("change", refreshAdminCanvas);
-          input.addEventListener("click", (event) => event.stopPropagation());
+          input.addEventListener("click", (event) => {
+            if (!input.classList.contains("custom-text-content")) {
+              event.stopPropagation();
+              return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            selectStageComponent(input.dataset.inlineComponent);
+          });
+          if (input.classList.contains("custom-text-content")) {
+            input.addEventListener("mouseup", () => rememberTextSelection(input));
+            input.addEventListener("keyup", () => rememberTextSelection(input));
+          }
         });
 
         document.querySelectorAll("[data-custom-draggable]").forEach((component) => {
