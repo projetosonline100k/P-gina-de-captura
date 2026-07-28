@@ -450,6 +450,23 @@
         return [...map.values()];
       }
 
+      function mergeFunnelRecords(localItems, remoteItems) {
+        const map = new Map();
+        [...localItems, ...remoteItems].forEach((item) => {
+          const current = map.get(item.sessionId);
+          if (!current) {
+            map.set(item.sessionId, item);
+            return;
+          }
+          const currentRank = Number(current.maxRank || 0);
+          const nextRank = Number(item.maxRank || 0);
+          const currentTime = new Date(current.updatedAt || current.createdAt || 0).getTime();
+          const nextTime = new Date(item.updatedAt || item.createdAt || 0).getTime();
+          map.set(item.sessionId, nextRank > currentRank || (nextRank === currentRank && nextTime >= currentTime) ? item : current);
+        });
+        return [...map.values()];
+      }
+
       async function loadRemoteData() {
         if (!supabaseEnabled() || state.remoteLoading || state.remoteLoaded) return;
         state.remoteLoading = true;
@@ -458,10 +475,12 @@
             supabaseRequest("quiz_submissions?select=*&order=created_at.asc"),
             supabaseRequest("quiz_funnel?select=*&order=updated_at.asc")
           ]);
-          state.submissions = (submissionRows || [])
+          const remoteSubmissions = (submissionRows || [])
             .filter((row) => row.result_profile !== "__quiz_definition__")
             .map(remoteSubmission);
-          state.funnel = (funnelRows || []).map(remoteFunnel);
+          const remoteFunnelRecords = (funnelRows || []).map(remoteFunnel);
+          state.submissions = mergeUnique(state.submissions, remoteSubmissions, "id");
+          state.funnel = mergeFunnelRecords(state.funnel, remoteFunnelRecords);
           state.remoteLoaded = true;
           state.remoteError = "";
           saveSubmissions();
@@ -4079,6 +4098,26 @@
 
       render();
       window.addEventListener("resize", fitAdminCanvas);
+      window.addEventListener("storage", (event) => {
+        if (event.key === FUNNEL_KEY && event.newValue) {
+          try {
+            const incoming = JSON.parse(event.newValue);
+            if (Array.isArray(incoming)) state.funnel = mergeFunnelRecords(state.funnel, incoming);
+          } catch (error) {}
+        }
+        if (event.key === SUBMISSIONS_KEY && event.newValue) {
+          try {
+            const incoming = JSON.parse(event.newValue);
+            if (Array.isArray(incoming)) state.submissions = mergeUnique(state.submissions, incoming, "id");
+          } catch (error) {}
+        }
+        if ((event.key === FUNNEL_KEY || event.key === SUBMISSIONS_KEY) && adminRoute()) render();
+      });
+      window.addEventListener("focus", () => {
+        if (!adminRoute()) return;
+        state.remoteLoaded = false;
+        loadRemoteData();
+      });
     </script>
   </body>
 </html>
