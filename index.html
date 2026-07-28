@@ -137,6 +137,8 @@
         mapZoom: 0.8,
         flowDateFrom: "",
         flowDateTo: "",
+        flowDatePreset: "all",
+        checkoutButtonPicker: false,
         adminResultIndex: 0,
         selectedComponentId: null,
         flowStage: "intro",
@@ -603,6 +605,17 @@
             component.showCountdown = false;
             component.behaviorVersion = 2;
           }
+          if (component?.type === "Botão" && typeof component.countsAsCheckout !== "boolean") {
+            component.countsAsCheckout = Boolean(component.url && component.url !== "#");
+          }
+          if (component?.type === "Preço" && component.template === "comparison") {
+            if (typeof component.basicCountsAsCheckout !== "boolean") {
+              component.basicCountsAsCheckout = Boolean(component.basicButtonUrl && component.basicButtonUrl !== "#");
+            }
+            if (typeof component.premiumCountsAsCheckout !== "boolean") {
+              component.premiumCountsAsCheckout = Boolean(component.premiumButtonUrl && component.premiumButtonUrl !== "#");
+            }
+          }
         });
         return clean;
       }
@@ -623,7 +636,7 @@
         const defaults = {
           "Vídeo": { content: "", label: "Cole aqui o link ou código de incorporação da Vturb" },
           "Imagem": { content: "", label: "Escolha uma imagem ou cole uma URL" },
-          "Botão": { content: "Quero continuar", url: "#" },
+          "Botão": { content: "Quero continuar", url: "#", countsAsCheckout: true },
           "Texto": { content: "Digite seu texto", fontFamily: "Inter", fontSize: "28", fontWeight: "600", textAlign: "center", color: "#172033" },
           "Espaço": { content: "48" },
           "Timer": { content: "10", action: "show", targetIds: [], showCountdown: false, behaviorVersion: 2 },
@@ -659,6 +672,8 @@
           basicBillingPeriod: "/mês",
           premiumButtonLabel: "Escolher Premium",
           premiumButtonUrl: "#",
+          basicCountsAsCheckout: true,
+          premiumCountsAsCheckout: true,
           premiumBillingPeriod: "/mês"
         }
       };
@@ -2419,6 +2434,7 @@
               featuresKey: "basicFeatures",
               buttonLabelKey: "basicButtonLabel",
               buttonUrl: component.basicButtonUrl,
+              checkoutKey: "basicCountsAsCheckout",
               buttonFallback: "Escolher Básico"
             },
             {
@@ -2429,6 +2445,7 @@
               featuresKey: "premiumFeatures",
               buttonLabelKey: "premiumButtonLabel",
               buttonUrl: component.premiumButtonUrl,
+              checkoutKey: "premiumCountsAsCheckout",
               buttonFallback: "Escolher Premium"
             }
           ].sort((a, b) => numericPrice(component[a.priceKey]) - numericPrice(component[b.priceKey]));
@@ -2440,7 +2457,7 @@
                   ${editable(plan.priceKey, "price-plan-value")}
                   ${editable(plan.billingKey, "price-billing-period", "/mês")}
                   <div class="price-feature-copy" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="${plan.featuresKey}">${escapeHtml(component[plan.featuresKey] || component.features || "")}</div>
-                  <a class="price-plan-button ${plan.featured ? "premium" : ""}" href="${escapeAttr(plan.buttonUrl || "#")}" ${linkPreview ? `data-action="preview-price-link"` : `target="_blank" rel="noopener"`}>${editable(plan.buttonLabelKey, "price-plan-button-label", plan.buttonFallback)}</a>
+                  <a class="price-plan-button ${plan.featured ? "premium" : ""}" href="${escapeAttr(plan.buttonUrl || "#")}" ${linkPreview ? `data-action="preview-price-link"` : `${component[plan.checkoutKey] ? `data-action="checkout-click" ` : ""}target="_blank" rel="noopener"`}>${editable(plan.buttonLabelKey, "price-plan-button-label", plan.buttonFallback)}</a>
                 </div>
               `).join("")}
             </div>
@@ -2501,7 +2518,11 @@
           return `<div class="custom-component text-component${accentClass}${selected}" style="margin-top:${marginTop}px;margin-bottom:${marginBottom}px"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<${tag} class="custom-text-content" style="font-family:${escapeAttr(componentFontFamily(component.fontFamily))};font-size:${fontSize}px;font-weight:${weight};text-align:${align};color:${escapeAttr(component.color || "#172033")};line-height:${lineHeight};letter-spacing:${letterSpacing}px;max-width:${maxWidth}%" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${textContent}</${tag}></div>`;
         }
         if (component.type === "Imagem") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${component.content ? `<img class="custom-image" src="${escapeAttr(component.content)}" alt="">` : `<div class="component-placeholder">Imagem</div>`}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor image-inline-editor">${imageUploadControls(component, true)}<input value="${escapeAttr(component.content?.startsWith("data:") ? "" : (component.content || ""))}" placeholder="Ou cole a URL da imagem" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
-        if (component.type === "Botão") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<a class="diagnostic-btn custom-button" href="${escapeAttr(component.url || "#")}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Botão")}</a>${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.url || "")}" placeholder="Link do botão" data-inline-component="${component.id}" data-component-key="url"></div>` : ""}</div>`;
+        if (component.type === "Botão") {
+          const checkoutAction = !preview && component.countsAsCheckout ? ` data-action="checkout-click"` : "";
+          const linkBehavior = !preview ? ` target="_blank" rel="noopener"` : "";
+          return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<a class="diagnostic-btn custom-button" href="${escapeAttr(component.url || "#")}"${checkoutAction}${linkBehavior} contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Botão")}</a>${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.url || "")}" placeholder="Link do botão" data-inline-component="${component.id}" data-component-key="url"></div>` : ""}</div>`;
+        }
         if (component.type === "Espaço") return `<div class="custom-component spacer-component${selected}" style="height:${Math.max(8, Number(component.content) || 48)}px"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input type="number" min="8" value="${escapeAttr(component.content || "48")}" aria-label="Altura do espaço" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
         return `<div class="custom-component generic-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<strong>${escapeHtml(component.type)}</strong><p contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Clique para editar")}</p></div>`;
       }
@@ -2514,10 +2535,14 @@
         const records = state.funnel.filter((item) => item.quizId === quiz.id);
         const resultRank = quiz.questions.length + 4;
         const completedTracked = records.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
-        const missingCompleted = Math.max(0, quizSubmissions(quiz).length - completedTracked);
-        return records.concat(Array.from({ length: missingCompleted }).map((_, index) => ({
-          sessionId: `resposta-antiga-${index}`,
+        const submissions = quizSubmissions(quiz);
+        const missingCompleted = Math.max(0, submissions.length - completedTracked);
+        const missingSubmissions = missingCompleted ? submissions.slice(-missingCompleted) : [];
+        return records.concat(missingSubmissions.map((submission, index) => ({
+          sessionId: `resposta-antiga-${submission.id || index}`,
           quizId: quiz.id,
+          createdAt: submission.createdAt,
+          updatedAt: submission.createdAt,
           maxRank: resultRank,
           stage: "result"
         })));
@@ -2563,6 +2588,14 @@
       function flowView(quiz) {
         const submissions = filterByFlowDate(quizSubmissions(quiz));
         const funnelRecords = filterByFlowDate(quizFunnelRecords(quiz));
+        const periodLabel = flowPeriodLabel();
+        const total = submissions.length;
+        const resultCounts = countBy(submissions, "resultProfile");
+        const topResult = Object.entries(resultCounts).sort((a, b) => b[1] - a[1])[0];
+        const resultRank = quiz.questions.length + 4;
+        const visitors = funnelRecords.length;
+        const completed = funnelRecords.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
+        const completionRate = visitors ? `${Math.round((completed / visitors) * 100)}%` : "0%";
         return `
           <section class="admin-page">
             <div class="admin-page-head">
@@ -2573,12 +2606,46 @@
               <button class="secondary-btn" data-action="clear-submissions">Limpar respostas</button>
             </div>
             <div class="flow-date-filter">
-              <strong>Filtrar por período</strong>
-              <label>De <input type="date" value="${escapeAttr(state.flowDateFrom)}" data-flow-date="from"></label>
-              <label>Até <input type="date" value="${escapeAttr(state.flowDateTo)}" data-flow-date="to"></label>
-              <button type="button" data-action="clear-flow-dates">Limpar filtro</button>
+              <div class="flow-date-filter-head">
+                <strong>Filtrar por período</strong>
+                <span>${escapeHtml(periodLabel)}</span>
+              </div>
+              <div class="flow-date-presets" aria-label="Períodos rápidos">
+                ${[
+                  ["today", "Hoje"],
+                  ["yesterday", "Ontem"],
+                  ["7", "Últimos 7 dias"],
+                  ["15", "15 dias"],
+                  ["30", "30 dias"],
+                  ["all", "Todo o período"]
+                ].map(([preset, label]) => `<button type="button" class="${state.flowDatePreset === preset ? "active" : ""}" data-action="set-flow-date-preset" data-preset="${preset}">${label}</button>`).join("")}
+              </div>
+              <details class="flow-custom-dates" ${state.flowDatePreset === "custom" ? "open" : ""}>
+                <summary>Escolher datas</summary>
+                <div>
+                  <label>De <input type="date" value="${escapeAttr(state.flowDateFrom)}" data-flow-date="from"></label>
+                  <label>Até <input type="date" value="${escapeAttr(state.flowDateTo)}" data-flow-date="to"></label>
+                  <button type="button" data-action="clear-flow-dates">Limpar</button>
+                </div>
+              </details>
             </div>
             ${funnelView(quiz, funnelRecords)}
+            <div class="metric-grid flow-overview-metrics">
+              ${metricCard("Respostas", total)}
+              ${metricCard("Perguntas", quiz.questions.length)}
+              ${metricCard("Perfil principal", topResult ? profileLabel(quiz, topResult[0]) : "Sem dados")}
+              ${metricCard("Conclusão", completionRate)}
+            </div>
+            <div class="admin-panel-grid flow-overview-panels">
+              <article class="admin-panel">
+                <h2>Últimas respostas</h2>
+                ${latestSubmissionsTable(quiz, submissions.slice(-6).reverse())}
+              </article>
+              <article class="admin-panel">
+                <h2>Distribuição de perfis</h2>
+                ${profileBars(quiz, submissions)}
+              </article>
+            </div>
             <div class="flow-map">
               ${quiz.questions.map((question, qIndex) => questionFlowCard(question, qIndex, submissions)).join("")}
             </div>
@@ -2591,9 +2658,105 @@
         const from = state.flowDateFrom ? new Date(`${state.flowDateFrom}T00:00:00`).getTime() : -Infinity;
         const to = state.flowDateTo ? new Date(`${state.flowDateTo}T23:59:59.999`).getTime() : Infinity;
         return items.filter((item) => {
-          const timestamp = new Date(item.createdAt || item.updatedAt || 0).getTime();
+          const timestampSource = item.sessionId ? (item.updatedAt || item.createdAt) : item.createdAt;
+          const timestamp = new Date(timestampSource || 0).getTime();
           return timestamp >= from && timestamp <= to;
         });
+      }
+
+      function localDateValue(date) {
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, "0");
+        const day = String(date.getDate()).padStart(2, "0");
+        return `${year}-${month}-${day}`;
+      }
+
+      function setFlowDatePreset(preset) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        state.flowDatePreset = preset;
+        if (preset === "all") {
+          state.flowDateFrom = "";
+          state.flowDateTo = "";
+          return;
+        }
+        const end = new Date(today);
+        const start = new Date(today);
+        if (preset === "yesterday") {
+          start.setDate(start.getDate() - 1);
+          end.setDate(end.getDate() - 1);
+        } else {
+          const days = preset === "today" ? 1 : Math.max(1, Number(preset) || 1);
+          start.setDate(start.getDate() - (days - 1));
+        }
+        state.flowDateFrom = localDateValue(start);
+        state.flowDateTo = localDateValue(end);
+      }
+
+      function flowPeriodLabel() {
+        if (!state.flowDateFrom && !state.flowDateTo) return "Todos os dados";
+        const format = (value) => value ? new Intl.DateTimeFormat("pt-BR").format(new Date(`${value}T12:00:00`)) : "";
+        if (state.flowDateFrom === state.flowDateTo) return format(state.flowDateFrom);
+        return `${format(state.flowDateFrom) || "início"} até ${format(state.flowDateTo) || "hoje"}`;
+      }
+
+      function checkoutButtonChoices(quiz) {
+        const custom = Object.entries(quiz.stageComponents || {}).flatMap(([stage, components]) =>
+          (components || []).flatMap((component) => {
+            if (component.type === "Botão") return [{
+              id: component.id,
+              stage,
+              label: component.content || "Botão sem nome",
+              url: component.url || "#",
+              selected: Boolean(component.countsAsCheckout)
+            }];
+            if (component.type === "Preço" && component.template === "comparison") return [
+              {
+                id: `price:${component.id}:basic`,
+                stage,
+                label: component.basicButtonLabel || "Escolher Básico",
+                url: component.basicButtonUrl || "#",
+                selected: Boolean(component.basicCountsAsCheckout)
+              },
+              {
+                id: `price:${component.id}:premium`,
+                stage,
+                label: component.premiumButtonLabel || "Escolher Premium",
+                url: component.premiumButtonUrl || "#",
+                selected: Boolean(component.premiumCountsAsCheckout)
+              }
+            ];
+            return [];
+          })
+        );
+        return [{
+          id: "result-cta",
+          stage: "Resultado",
+          label: quiz.ctaLabel || "Botão principal",
+          url: quiz.purchaseUrl || "#",
+          selected: quiz.trackPrimaryCheckout !== false
+        }, ...custom];
+      }
+
+      function checkoutPickerMarkup(quiz) {
+        if (!state.checkoutButtonPicker) return "";
+        return `
+          <section class="checkout-picker-panel">
+            <div>
+              <h3>Selecionar botões de checkout</h3>
+              <button type="button" data-action="toggle-checkout-picker" aria-label="Fechar">×</button>
+            </div>
+            <p>Marque todos os botões cujos cliques devem entrar nessa métrica.</p>
+            <div class="checkout-picker-list">
+              ${checkoutButtonChoices(quiz).map((button) => `
+                <label>
+                  <input type="checkbox" ${button.selected ? "checked" : ""} data-checkout-choice="${escapeAttr(button.id)}">
+                  <span><strong>${escapeHtml(button.label)}</strong><small>${escapeHtml(button.stage)} · ${escapeHtml(button.url)}</small></span>
+                </label>
+              `).join("")}
+            </div>
+          </section>
+        `;
       }
 
       function leadsView(quiz) {
@@ -2678,19 +2841,8 @@
 
       function funnelView(quiz, records) {
         const steps = funnelSteps(quiz);
-        if (!records.length) {
-          return `
-            <article class="funnel-panel empty">
-              <div>
-                <p class="admin-kicker">Funil</p>
-                <h2>Passagem por etapa</h2>
-              </div>
-              <p>Abra o link público e faça um teste para começar a medir onde as pessoas avançam ou param.</p>
-            </article>
-          `;
-        }
-
-        const total = records.filter((item) => Number(item.maxRank || 0) >= 0).length || 1;
+        const visitorCount = records.filter((item) => Number(item.maxRank || 0) >= 0).length;
+        const total = visitorCount || 1;
         const resultRank = quiz.questions.length + 4;
         const checkoutRank = quiz.questions.length + 5;
         const resultCount = records.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
@@ -2704,7 +2856,7 @@
                 <p class="admin-kicker">Funil</p>
                 <h2>Passagem por etapa</h2>
               </div>
-              <strong>${total} visitante(s)</strong>
+              <strong>${visitorCount} visitante(s)</strong>
             </div>
             <div class="funnel-summary">
               <div><span>Cliques no checkout</span><strong>${checkoutCount}</strong></div>
@@ -2724,10 +2876,13 @@
                     <strong>${count}</strong>
                     <small>${drop ? `-${drop} queda` : "sem queda"}</small>
                     <i></i>
+                    ${step.key === "checkout" ? `<button class="select-checkout-buttons" type="button" data-action="toggle-checkout-picker">Selecionar botões</button>` : ""}
                   </div>
                 `;
               }).join("")}
             </div>
+            ${checkoutPickerMarkup(quiz)}
+            ${visitorCount ? "" : `<p class="funnel-empty-note">Nenhum dado neste período. O gráfico continua visível para facilitar a comparação.</p>`}
           </article>
         `;
       }
@@ -3090,7 +3245,7 @@
                 ${(result.bullets || []).map((item, bulletIndex) => `<li><span>✓</span><b contenteditable="${preview ? "true" : "false"}" data-map-result="${resultIndex}" data-map-bullet="${bulletIndex}">${escapeHtml(item)}</b></li>`).join("")}
               </ul>
               ${stageComponentsView(quiz, "result", preview, 4)}
-              <a class="diagnostic-btn result-cta" data-delay-target="result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener" data-action="${preview ? "preview-checkout-click" : "checkout-click"}">
+              <a class="diagnostic-btn result-cta" data-delay-target="result-cta" href="${escapeAttr(quiz.purchaseUrl)}" target="_blank" rel="noopener"${preview ? ` data-action="preview-checkout-click"` : quiz.trackPrimaryCheckout !== false ? ` data-action="checkout-click"` : ""}>
                 ${escapeHtml(quiz.ctaLabel)}
               </a>
             </div>
@@ -3233,6 +3388,15 @@
             if (action === "clear-flow-dates") {
               state.flowDateFrom = "";
               state.flowDateTo = "";
+              state.flowDatePreset = "all";
+              render();
+            }
+            if (action === "set-flow-date-preset") {
+              setFlowDatePreset(element.dataset.preset || "all");
+              render();
+            }
+            if (action === "toggle-checkout-picker") {
+              state.checkoutButtonPicker = !state.checkoutButtonPicker;
               render();
             }
             if (action === "export-submissions") exportSubmissions(activeQuiz());
@@ -3381,7 +3545,26 @@
           input.addEventListener("change", () => {
             if (input.dataset.flowDate === "from") state.flowDateFrom = input.value;
             if (input.dataset.flowDate === "to") state.flowDateTo = input.value;
+            state.flowDatePreset = "custom";
             render();
+          });
+        });
+
+        document.querySelectorAll("[data-checkout-choice]").forEach((input) => {
+          input.addEventListener("change", () => {
+            if (input.dataset.checkoutChoice === "result-cta") {
+              quiz.trackPrimaryCheckout = input.checked;
+            } else if (input.dataset.checkoutChoice.startsWith("price:")) {
+              const [, componentId, plan] = input.dataset.checkoutChoice.split(":");
+              const component = Object.values(quiz.stageComponents || {}).flat()
+                .find((item) => item.id === componentId);
+              if (component) component[plan === "premium" ? "premiumCountsAsCheckout" : "basicCountsAsCheckout"] = input.checked;
+            } else {
+              const component = Object.values(quiz.stageComponents || {}).flat()
+                .find((item) => item.id === input.dataset.checkoutChoice);
+              if (component) component.countsAsCheckout = input.checked;
+            }
+            saveQuizzes();
           });
         });
 

@@ -2776,6 +2776,14 @@ select:focus {
   gap: 18px;
 }
 
+.flow-overview-metrics {
+  margin-top: 18px;
+}
+
+.flow-overview-panels {
+  margin: 14px 0 18px;
+}
+
 .funnel-panel {
   position: relative;
   overflow: hidden;
@@ -2791,9 +2799,7 @@ select:focus {
 }
 
 .flow-date-filter {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
   gap: 12px;
   margin-bottom: 18px;
   padding: 14px 16px;
@@ -2802,8 +2808,45 @@ select:focus {
   background: #fff;
 }
 
-.flow-date-filter > strong {
-  margin-right: auto;
+.flow-date-filter-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flow-date-filter-head span {
+  color: #64707d;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.flow-date-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.flow-date-filter .flow-date-presets button.active {
+  border-color: #2878e8;
+  color: #fff;
+  background: #2878e8;
+}
+
+.flow-custom-dates summary {
+  width: max-content;
+  color: #536170;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.flow-custom-dates > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 .flow-date-filter label {
@@ -2831,6 +2874,150 @@ select:focus {
   background: #f8fafc;
   cursor: pointer;
   font-weight: 800;
+}
+
+.funnel-empty-note {
+  margin: 16px 0 0;
+  color: #aebbd1;
+  font-size: 13px;
+}
+
+.checkout-tracking-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #cddbf0;
+  border-radius: 9px;
+  color: #172033;
+  background: #f5f9ff;
+  cursor: pointer;
+}
+
+.checkout-tracking-option input {
+  width: 18px;
+  height: 18px;
+  margin: 2px 0 0;
+  accent-color: #2878e8;
+}
+
+.checkout-tracking-option span {
+  display: grid;
+  gap: 3px;
+}
+
+.checkout-tracking-option strong {
+  font-size: 13px;
+}
+
+.checkout-tracking-option small {
+  color: #64748b;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.select-checkout-buttons {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  margin-top: 8px;
+  padding: 7px 5px;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  border-radius: 6px;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 900;
+}
+
+.select-checkout-buttons:hover {
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.checkout-picker-panel {
+  margin-top: 18px;
+  padding: 18px;
+  border: 1px solid rgba(144, 164, 255, 0.42);
+  border-radius: 12px;
+  color: #172033;
+  background: #fff;
+}
+
+.checkout-picker-panel > div:first-child {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.checkout-picker-panel h3 {
+  margin: 0;
+}
+
+.checkout-picker-panel > div:first-child button {
+  border: 0;
+  color: #64748b;
+  background: transparent;
+  cursor: pointer;
+  font-size: 24px;
+}
+
+.checkout-picker-panel > p {
+  margin: 6px 0 14px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.checkout-picker-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 9px;
+}
+
+.checkout-picker-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 11px;
+  border: 1px solid #dce4ee;
+  border-radius: 9px;
+  cursor: pointer;
+}
+
+.checkout-picker-list label:has(input:checked) {
+  border-color: #2878e8;
+  background: #eff6ff;
+}
+
+.checkout-picker-list input {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: #2878e8;
+}
+
+.checkout-picker-list span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.checkout-picker-list strong,
+.checkout-picker-list small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checkout-picker-list strong {
+  font-size: 12px;
+}
+
+.checkout-picker-list small {
+  color: #64748b;
+  font-size: 10px;
 }
 
 .funnel-panel.empty {
