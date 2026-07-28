@@ -468,6 +468,11 @@ select:focus {
   font-size: 24px;
 }
 
+.builder-history button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
 .builder-tabs {
   justify-content: center;
   gap: 10px;
@@ -617,45 +622,9 @@ select:focus {
 
 .flow-builder-workspace {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   height: calc(100vh - 56px);
   background: #f8fafc;
-}
-
-.flow-component-tray {
-  display: grid;
-  gap: 10px;
-  padding: 13px 18px;
-  border-bottom: 1px solid #dfe5ec;
-  background: #fff;
-}
-
-.flow-tray-head {
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.flow-tray-head strong {
-  font-size: 14px;
-}
-
-.flow-tray-head span {
-  color: #8a94a2;
-  font-size: 12px;
-}
-
-.flow-tray-scroll {
-  display: flex;
-  gap: 9px;
-  overflow-x: auto;
-  padding-bottom: 3px;
-}
-
-.flow-tray-scroll .component-pill {
-  flex: 0 0 auto;
-  width: auto;
-  min-width: 132px;
 }
 
 .funnel-map {
@@ -678,6 +647,26 @@ select:focus {
   background: rgba(255, 255, 255, 0.9);
   font-size: 12px;
   font-weight: 800;
+}
+
+.funnel-create-block {
+  position: absolute;
+  z-index: 21;
+  top: 14px;
+  left: 340px;
+  min-height: 36px;
+  padding: 0 16px;
+  border: 1px solid #2d76df;
+  border-radius: 8px;
+  color: #fff;
+  background: #2d76df;
+  box-shadow: 0 5px 14px rgba(45, 118, 223, 0.2);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.funnel-create-block:hover {
+  background: #1f64c7;
 }
 
 .funnel-node-track {
@@ -708,6 +697,13 @@ select:focus {
   stroke-width: 4;
   stroke-dasharray: 12 10;
   stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.funnel-connection-layer path:hover {
+  stroke: #dc2626;
+  stroke-width: 7;
 }
 
 .funnel-map-controls {
@@ -765,6 +761,16 @@ select:focus {
   box-shadow: 0 16px 34px rgba(45, 118, 223, 0.16);
 }
 
+.funnel-node.connection-card-target {
+  border-color: #2d76df;
+  box-shadow: 0 0 0 6px rgba(45, 118, 223, 0.14), 0 16px 34px rgba(45, 118, 223, 0.16);
+}
+
+.funnel-node.connection-card-available {
+  border-color: #93b8ee;
+  box-shadow: 0 0 0 4px rgba(45, 118, 223, 0.08), 0 12px 30px rgba(25, 42, 70, 0.08);
+}
+
 .funnel-node.stage-drop-active {
   transform: translateY(-8px) scale(1.03);
   border-color: #19a64f;
@@ -816,6 +822,16 @@ select:focus {
   background: #edf1f5;
   cursor: pointer;
   font-weight: 900;
+}
+
+.funnel-node-tools .delete-flow-node {
+  color: #b42318;
+  background: #feeceb;
+}
+
+.funnel-node-tools .delete-flow-node:hover {
+  color: #fff;
+  background: #d92d20;
 }
 
 .funnel-node-move-handle {
@@ -942,6 +958,21 @@ select:focus {
   left: -11px;
   top: calc(50% - 11px);
   background: #fff;
+}
+
+.flow-input-port.connection-target-available {
+  width: 30px;
+  height: 30px;
+  margin: -4px;
+  background: #dbeafe;
+  box-shadow: 0 0 0 4px rgba(45, 118, 223, 0.22), 0 4px 12px rgba(45, 118, 223, 0.28);
+  animation: connectionTargetPulse 900ms ease-in-out infinite alternate;
+}
+
+@keyframes connectionTargetPulse {
+  to {
+    box-shadow: 0 0 0 8px rgba(45, 118, 223, 0.1), 0 4px 12px rgba(45, 118, 223, 0.28);
+  }
 }
 
 .flow-output-ports {
@@ -2059,6 +2090,49 @@ select:focus {
 .text-template-modal > header p {
   margin: 7px 0 0;
   color: #718096;
+}
+
+.delete-confirm-modal {
+  display: grid;
+  width: min(460px, 94vw);
+  gap: 16px;
+  padding: 30px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 30px 80px rgba(15, 23, 42, 0.28);
+}
+
+.delete-warning-icon {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  place-items: center;
+  border-radius: 50%;
+  color: #b42318;
+  background: #feeceb;
+  font-size: 26px;
+  font-weight: 900;
+}
+
+.delete-confirm-modal h2,
+.delete-confirm-modal p {
+  margin: 0;
+}
+
+.delete-confirm-modal p {
+  color: #667085;
+  line-height: 1.55;
+}
+
+.delete-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.delete-confirm-actions .danger-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.42;
 }
 
 .text-template-grid {

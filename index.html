@@ -152,10 +152,16 @@
         unpublishedQuizIds: new Set(),
         priceTemplatePicker: false,
         textTemplatePicker: false,
-        previewDevice: "desktop"
+        previewDevice: "desktop",
+        pendingDeleteQuestionIndex: null
       };
       let savedTextRange = null;
       let savedTextComponentId = null;
+      let historyPast = [];
+      let historyFuture = [];
+      let historyApplying = false;
+      let lastQuizSnapshot = JSON.stringify(state.quizzes);
+      let keyboardShortcutsBound = false;
 
       function clone(value) {
         return JSON.parse(JSON.stringify(value));
@@ -212,6 +218,17 @@
       }
 
       function saveQuizzes() {
+        const currentSnapshot = JSON.stringify(state.quizzes);
+        if (!historyApplying && currentSnapshot !== lastQuizSnapshot) {
+          historyPast.push(lastQuizSnapshot);
+          if (historyPast.length > 100) historyPast.shift();
+          historyFuture = [];
+          lastQuizSnapshot = currentSnapshot;
+        }
+        const undoButton = document.querySelector("[data-action='undo-editor']");
+        const redoButton = document.querySelector("[data-action='redo-editor']");
+        if (undoButton) undoButton.disabled = !historyPast.length;
+        if (redoButton) redoButton.disabled = !historyFuture.length;
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
         const quizId = activeQuiz()?.id;
         if (quizId) {
@@ -222,6 +239,44 @@
             publishButton.textContent = "Publicar alterações";
           }
         }
+      }
+
+      function applyHistorySnapshot(snapshot) {
+        historyApplying = true;
+        state.quizzes = JSON.parse(snapshot).map(normalizeQuiz);
+        if (!state.quizzes.some((quiz) => quiz.id === state.activeId)) state.activeId = state.quizzes[0]?.id || null;
+        lastQuizSnapshot = JSON.stringify(state.quizzes);
+        localStorage.setItem(STORAGE_KEY, lastQuizSnapshot);
+        historyApplying = false;
+        state.selectedComponentId = null;
+        render();
+      }
+
+      function undoEditor() {
+        if (!historyPast.length) return;
+        const current = JSON.stringify(state.quizzes);
+        const previous = historyPast.pop();
+        historyFuture.push(current);
+        applyHistorySnapshot(previous);
+      }
+
+      function redoEditor() {
+        if (!historyFuture.length) return;
+        const current = JSON.stringify(state.quizzes);
+        const next = historyFuture.pop();
+        historyPast.push(current);
+        applyHistorySnapshot(next);
+      }
+
+      function bindKeyboardShortcuts() {
+        if (keyboardShortcutsBound) return;
+        keyboardShortcutsBound = true;
+        document.addEventListener("keydown", (event) => {
+          if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "z") return;
+          event.preventDefault();
+          if (event.shiftKey) redoEditor();
+          else undoEditor();
+        });
       }
 
       function syncQuizDefinition(quiz) {
@@ -554,10 +609,10 @@
 
       function stageKey(quiz, stage = state.adminStage) {
         if (stage === 0) return "intro";
-        if (stage > 0 && stage <= quiz.questions.length) return `question:${stage - 1}`;
-        if (stage === quiz.questions.length + 1) return "loading";
-        if (stage === quiz.questions.length + 2) return "result";
-        return "publication";
+        if (stage === 1) return "name";
+        if (stage > 1 && stage <= quiz.questions.length + 1) return `question:${stage - 2}`;
+        if (stage === quiz.questions.length + 2) return "loading";
+        return "result";
       }
 
       function addStageComponent(type) {
@@ -983,7 +1038,7 @@
 
       function addQuestion() {
         const quiz = activeQuiz();
-        const previousCount = quiz.questions.length;
+        const newQuestionIndex = quiz.questions.length;
         quiz.questions.push({
           text: "Nova pergunta",
           options: [
@@ -991,15 +1046,10 @@
             { text: "Opcao B", profile: "economia", weight: 2 }
           ]
         });
-        if ((quiz.flowConnections || []).length) {
-          const previousKey = `question:${previousCount - 1}`;
-          const newKey = `question:${previousCount}`;
-          quiz.flowConnections.forEach((connection) => {
-            if (connection.from === previousKey && connection.to === "loading") connection.to = newKey;
-          });
-          quiz.questions[previousCount].options.forEach((_, option) => quiz.flowConnections.push({ from: newKey, to: "loading", option }));
-        }
-        state.adminStage = quiz.questions.length;
+        quiz.flowDisconnected ||= [];
+        const newStageKey = `question:${newQuestionIndex}`;
+        if (!quiz.flowDisconnected.includes(newStageKey)) quiz.flowDisconnected.push(newStageKey);
+        state.adminStage = quiz.questions.length + 1;
         saveQuizzes();
         render();
       }
@@ -1007,11 +1057,59 @@
       function removeQuestion(index) {
         const quiz = activeQuiz();
         if (quiz.questions.length === 1) return;
+        const remapKey = (key) => {
+          const match = String(key || "").match(/^question:(\d+)$/);
+          if (!match) return key;
+          const questionIndex = Number(match[1]);
+          if (questionIndex === index) return null;
+          return questionIndex > index ? `question:${questionIndex - 1}` : key;
+        };
+        const remapRecord = (record = {}) => Object.fromEntries(Object.entries(record).flatMap(([key, value]) => {
+          const nextKey = remapKey(key);
+          return nextKey ? [[nextKey, value]] : [];
+        }));
+        quiz.flowConnections = (quiz.flowConnections || []).flatMap((connection) => {
+          const from = remapKey(connection.from);
+          const to = remapKey(connection.to);
+          return from && to ? [{ ...connection, from, to }] : [];
+        });
+        quiz.flowDisconnected = (quiz.flowDisconnected || []).map(remapKey).filter(Boolean);
+        quiz.flowLayout = remapRecord(quiz.flowLayout);
+        quiz.stageComponents = remapRecord(quiz.stageComponents);
+        quiz.hiddenElements = remapRecord(quiz.hiddenElements);
         quiz.questions.splice(index, 1);
-        state.adminStage = Math.min(state.adminStage, quiz.questions.length);
+        state.adminStage = Math.min(index + 2, quiz.questions.length + 1);
         state.previewStep = Math.min(state.previewStep, quiz.questions.length - 1);
+        state.pendingDeleteQuestionIndex = null;
         saveQuizzes();
         render();
+      }
+
+      function requestDeleteQuestion(index) {
+        state.pendingDeleteQuestionIndex = index;
+        render();
+      }
+
+      function deleteQuestionModal() {
+        const index = state.pendingDeleteQuestionIndex;
+        if (index == null) return "";
+        return `
+          <div class="price-template-backdrop delete-confirm-backdrop">
+            <section class="delete-confirm-modal" role="dialog" aria-modal="true" aria-label="Confirmar exclusão do bloco">
+              <span class="delete-warning-icon">!</span>
+              <h2>Excluir Pergunta ${index + 1}?</h2>
+              <p>Esta ação remove o bloco, seus componentes e todas as conexões ligadas a ele.</p>
+              <label class="field">
+                <span>Digite <strong>EXCLUIR</strong> para confirmar</span>
+                <input autocomplete="off" data-delete-confirm-input placeholder="EXCLUIR">
+              </label>
+              <div class="delete-confirm-actions">
+                <button type="button" class="secondary-btn" data-action="cancel-delete-question">Cancelar</button>
+                <button type="button" class="danger-btn" data-action="confirm-delete-question" disabled>Excluir bloco</button>
+              </div>
+            </section>
+          </div>
+        `;
       }
 
       function moveQuestionOrder(index, direction) {
@@ -1048,7 +1146,7 @@
         quiz.flowLayout ||= {};
         const sourcePosition = nodePosition(quiz, index + 1);
         quiz.flowLayout[`question:${newIndex}`] = { x: sourcePosition.x + 380, y: sourcePosition.y + 180 };
-        state.adminStage = newIndex + 1;
+        state.adminStage = newIndex + 2;
         saveQuizzes();
         render();
       }
@@ -1259,6 +1357,7 @@
       }
 
       function render() {
+        bindKeyboardShortcuts();
         const previousScroll = {
           window: window.scrollY,
           canvas: document.querySelector(".canvas-area")?.scrollTop || 0,
@@ -1288,6 +1387,8 @@
           const frame = document.querySelector(".selected-outline");
           applyHiddenStageElements(activeQuiz(), stageKey(activeQuiz()), frame || document);
           if (frame) decorateRemovableStageElements(frame);
+        } else if (state.adminTab === "builder" && state.builderView === "flow") {
+          syncFlowThumbnails(activeQuiz());
         }
         bindEvents(isPublic ? publicQuiz : activeQuiz());
         if (isPublic) {
@@ -1342,6 +1443,23 @@
             const middle = (x1 + x2) / 2;
             return `<path data-connection-from="${escapeAttr(connection.from)}" data-connection-option="${connection.option ?? ""}" d="M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}"></path>`;
           }).join("");
+          layer.querySelectorAll("[data-connection-from]").forEach((path) => {
+            path.addEventListener("click", (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const option = path.dataset.connectionOption === "" ? null : Number(path.dataset.connectionOption);
+              showConnectionContextMenu(event.clientX, event.clientY, path.dataset.connectionFrom, option);
+            });
+          });
+        });
+      }
+
+      function syncFlowThumbnails(quiz) {
+        document.querySelectorAll("[data-thumbnail-stage]").forEach((thumbnail) => {
+          const stage = Number(thumbnail.dataset.thumbnailStage);
+          applyHiddenStageElements(quiz, stageKey(quiz, stage), thumbnail);
+          thumbnail.querySelectorAll(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, .inline-timer-editor").forEach((element) => element.remove());
+          thumbnail.querySelectorAll(".selected-custom-component").forEach((element) => element.classList.remove("selected-custom-component"));
         });
       }
 
@@ -1394,7 +1512,8 @@
               return;
             }
             if (action === "preview-start") state.adminStage = Math.min(1, activeQuiz().questions.length);
-            if (action === "preview-answer") state.adminStage = Math.min(state.adminStage + 1, activeQuiz().questions.length + 1);
+            if (action === "preview-name-next") state.adminStage = Math.min(2, activeQuiz().questions.length + 1);
+            if (action === "preview-answer") state.adminStage = Math.min(state.adminStage + 1, activeQuiz().questions.length + 2);
             if (action === "preview-reset") state.adminStage = 0;
             if (action === "preview-checkout-click") window.open(element.href, "_blank", "noopener");
             if (action === "select-custom-component") {
@@ -1531,14 +1650,14 @@
         if (state.adminTab === "settings") return adminShell(quiz, link, settingsView(quiz, link));
         const stageNames = [
           "Boas-vindas",
+          "Nome",
           ...quiz.questions.map((_, index) => `Pergunta ${index + 1}`),
           "Loading",
-          "Resultado",
-          "Publicação"
+          "Resultado"
         ];
         const activeStage = Math.min(state.adminStage, stageNames.length - 1);
         const componentNames = componentCatalog();
-        if (state.builderView === "flow") return adminShell(quiz, link, flowBuilderCanvas(quiz, stageNames, componentNames));
+        if (state.builderView === "flow") return adminShell(quiz, link, flowBuilderCanvas(quiz, stageNames));
         return adminShell(quiz, link, pageBuilderCanvas(quiz, link, stageNames, activeStage, componentNames));
       }
 
@@ -1560,20 +1679,15 @@
         ];
       }
 
-      function flowBuilderCanvas(quiz, stageNames, componentNames) {
+      function flowBuilderCanvas(quiz, stageNames) {
         quiz.flowLayout ||= {};
         quiz.flowDisconnected ||= [];
         ensureFlowConnections(quiz);
         return `
           <div class="flow-builder-workspace">
-            <div class="flow-component-tray">
-              <div class="flow-tray-head"><strong>Componentes</strong><span>Arraste para uma etapa</span></div>
-              <div class="flow-tray-scroll">
-                ${componentNames.map(([iconValue, name]) => `<button class="component-pill" draggable="true" data-action="component-pick" data-component="${escapeAttr(name)}"><span>${iconValue}</span>${name}</button>`).join("")}
-              </div>
-            </div>
             <div class="funnel-map" data-funnel-map>
-              <div class="funnel-map-hint">Clique em uma etapa para editar · botão direito no espaço vazio para adicionar</div>
+              <div class="funnel-map-hint">Conecte da saída à direita para a entrada à esquerda · clique em uma etapa para editar</div>
+              <button class="funnel-create-block" type="button" data-action="add-question">+ Criar novo bloco</button>
               <div class="funnel-map-controls">
                 <button data-action="map-zoom-out" title="Diminuir zoom">−</button>
                 <strong>${Math.round(state.mapZoom * 100)}%</strong>
@@ -1586,7 +1700,7 @@
                   <div class="funnel-node-wrap" data-flow-node="${index}" style="left:${nodePosition(quiz, index).x}px;top:${nodePosition(quiz, index).y}px">
                     <button class="flow-port flow-input-port" data-flow-input="${escapeAttr(stageKey(quiz, index))}" title="Entrada desta etapa"></button>
                     <article class="funnel-node ${index === state.adminStage ? "active" : ""}" data-stage-drop="${index}" data-stage="${index}">
-                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong><div class="funnel-node-tools">${index > 0 && index <= quiz.questions.length ? `<button data-action="move-question-order" data-question="${index - 1}" data-direction="-1" title="Mover pergunta para trás">←</button><button data-action="move-question-order" data-question="${index - 1}" data-direction="1" title="Mover pergunta para frente">→</button><button data-action="duplicate-question-page" data-question="${index - 1}" title="Duplicar página">⧉</button>` : ""}<button class="funnel-node-move-handle" title="Mover página">⠿</button></div></div>
+                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong><div class="funnel-node-tools">${index > 1 && index <= quiz.questions.length + 1 ? `<button data-action="move-question-order" data-question="${index - 2}" data-direction="-1" title="Mover pergunta para trás">←</button><button data-action="move-question-order" data-question="${index - 2}" data-direction="1" title="Mover pergunta para frente">→</button><button data-action="duplicate-question-page" data-question="${index - 2}" title="Duplicar página">⧉</button>${quiz.questions.length > 1 ? `<button class="delete-flow-node" data-action="request-delete-question" data-question="${index - 2}" title="Excluir bloco">×</button>` : ""}` : ""}<button class="funnel-node-move-handle" title="Mover página">⠿</button></div></div>
                       <div class="funnel-node-preview">${stageThumbnail(quiz, index)}</div>
                       <div class="funnel-node-foot"><span>${(quiz.stageComponents?.[stageKey(quiz, index)] || []).length} componentes</span><button data-action="open-stage-editor" data-stage="${index}">Editar página</button></div>
                     </article>
@@ -1594,22 +1708,33 @@
                   </div>
                 `).join("")}
               </div>
-              <button class="funnel-add-node" data-action="add-question">+ Nova pergunta</button>
             </div>
           </div>
         `;
       }
 
       function ensureFlowConnections(quiz) {
-        const keys = ["intro", ...quiz.questions.map((_, index) => `question:${index}`), "loading", "result", "publication"];
+        const keys = ["intro", "name", ...quiz.questions.map((_, index) => `question:${index}`), "loading", "result"];
         if (!Array.isArray(quiz.flowConnections)) quiz.flowConnections = [];
         if (!quiz.flowConnections.length) {
           quiz.flowConnections = keys.slice(0, -1).flatMap((from, index) => {
             if (!from.startsWith("question:")) return [{ from, to: keys[index + 1], option: null }];
             const questionIndex = Number(from.split(":")[1]);
             return quiz.questions[questionIndex].options.map((_, option) => ({ from, to: keys[index + 1], option }));
-          });
+          }).filter((connection) => !(quiz.flowDisconnected || []).includes(connection.from) && !(quiz.flowDisconnected || []).includes(connection.to));
           return;
+        }
+        quiz.flowConnections = quiz.flowConnections.filter((connection) => connection.from !== "result" && connection.to !== "publication");
+        const introConnection = quiz.flowConnections.find((connection) => connection.from === "intro" && connection.option == null);
+        if (!introConnection || introConnection.to !== "name") {
+          const previousTarget = introConnection?.to || "question:0";
+          if (introConnection) introConnection.to = "name";
+          else quiz.flowConnections.push({ from: "intro", to: "name", option: null });
+          if (!quiz.flowConnections.some((connection) => connection.from === "name")) {
+            quiz.flowConnections.push({ from: "name", to: previousTarget, option: null });
+          }
+        } else if (!quiz.flowConnections.some((connection) => connection.from === "name")) {
+          quiz.flowConnections.push({ from: "name", to: "question:0", option: null });
         }
         const genericQuestionConnections = quiz.flowConnections.filter((connection) => connection.from.startsWith("question:") && connection.option == null);
         genericQuestionConnections.forEach((generic) => {
@@ -1621,7 +1746,7 @@
 
       function stageOutputPorts(quiz, stage) {
         const from = stageKey(quiz, stage);
-        if (from === "publication") return "";
+        if (from === "result") return "";
         if (from.startsWith("question:")) {
           const questionIndex = Number(from.split(":")[1]);
           return quiz.questions[questionIndex].options.map((option, index) => `
@@ -1657,6 +1782,10 @@
           state.flowStage = "intro";
           return true;
         }
+        if (target === "name") {
+          state.flowStage = "name";
+          return true;
+        }
         return false;
       }
 
@@ -1668,11 +1797,11 @@
       function stageThumbnail(quiz, stage) {
         let page = "";
         if (stage === 0) page = introView(quiz, true);
-        else if (stage > 0 && stage <= quiz.questions.length) page = questionView(quiz, stage - 1, true);
-        else if (stage === quiz.questions.length + 1) page = loadingView(quiz, true);
-        else if (stage === quiz.questions.length + 2) page = resultView(quiz, quiz.results[0] || defaultQuiz.results[0], true);
-        else page = `<section class="map-publication-page"><span>✓</span><h2>Quiz pronto para publicar</h2><p>${escapeHtml(shareUrl(quiz))}</p></section>`;
-        return `<div class="funnel-page-preview"><div class="funnel-page-preview-inner public-shell">${page}</div></div>`;
+        else if (stage === 1) page = nameView(quiz, true);
+        else if (stage > 1 && stage <= quiz.questions.length + 1) page = questionView(quiz, stage - 2, true);
+        else if (stage === quiz.questions.length + 2) page = loadingView(quiz, true);
+        else page = resultView(quiz, quiz.results[0] || defaultQuiz.results[0], true);
+        return `<div class="funnel-page-preview" data-thumbnail-stage="${stage}"><div class="funnel-page-preview-inner public-shell">${page}</div></div>`;
       }
 
       function pageBuilderCanvas(quiz, link, stageNames, activeStage, componentNames) {
@@ -1721,8 +1850,8 @@
             <header class="builder-topbar">
               <div class="builder-history">
                 <button aria-label="Voltar">‹</button>
-                <button aria-label="Desfazer">↶</button>
-                <button aria-label="Refazer">↷</button>
+                <button data-action="undo-editor" aria-label="Desfazer" title="Desfazer (Ctrl/Cmd + Z)" ${historyPast.length ? "" : "disabled"}>↶</button>
+                <button data-action="redo-editor" aria-label="Refazer" title="Refazer (Ctrl/Cmd + Shift + Z)" ${historyFuture.length ? "" : "disabled"}>↷</button>
               </div>
 
               <nav class="builder-tabs" aria-label="Seções do editor">
@@ -1749,6 +1878,7 @@
             ${content}
             ${state.priceTemplatePicker ? priceTemplateModal() : ""}
             ${state.textTemplatePicker ? textTemplateModal() : ""}
+            ${deleteQuestionModal()}
           </main>
         `;
       }
@@ -1763,15 +1893,18 @@
 
       function adminCanvasPreview(quiz) {
         const stage = Math.min(state.adminStage, quiz.questions.length + 3);
-        if (stage > 0 && stage <= quiz.questions.length) {
+        if (stage === 1) {
+          return `<div class="canvas-live-page public-shell">${nameView(quiz, true)}</div>`;
+        }
+        if (stage > 1 && stage <= quiz.questions.length + 1) {
           return `
             <div class="canvas-live-page public-shell">
-              ${questionView(quiz, stage - 1, true)}
+              ${questionView(quiz, stage - 2, true)}
             </div>
           `;
         }
 
-        if (stage === quiz.questions.length + 1) {
+        if (stage === quiz.questions.length + 2) {
           return `
             <div class="canvas-live-page public-shell">
               ${loadingView(quiz, true)}
@@ -1779,20 +1912,12 @@
           `;
         }
 
-        if (stage === quiz.questions.length + 2) {
+        if (stage === quiz.questions.length + 3) {
           const activeResultIndex = Math.min(state.adminResultIndex, quiz.results.length - 1);
           const result = quiz.results[activeResultIndex] || defaultQuiz.results[0];
           return `
             <div class="canvas-live-page public-shell">
               ${resultView(quiz, result, true)}
-            </div>
-          `;
-        }
-
-        if (stage === quiz.questions.length + 3) {
-          return `
-            <div class="canvas-live-page public-shell">
-              ${introView(quiz, true)}
             </div>
           `;
         }
@@ -1821,17 +1946,25 @@
           `;
         }
 
-        if (stage > 0 && stage <= quiz.questions.length) {
+        if (stage === 1) {
           return `
-            <div class="section-title compact">
-              <h3>Pergunta ${stage}</h3>
-              <button type="button" class="secondary-btn" data-action="add-question">+ pergunta</button>
-            </div>
-            ${questionEditor(quiz.questions[stage - 1], stage - 1)}
+            <h3>Identificação</h3>
+            <p class="settings-note">Esta é a etapa em que o viajante informa o nome antes de começar o quiz.</p>
           `;
         }
 
-        if (stage === quiz.questions.length + 1) {
+        if (stage > 1 && stage <= quiz.questions.length + 1) {
+          const questionIndex = stage - 2;
+          return `
+            <div class="section-title compact">
+              <h3>Pergunta ${questionIndex + 1}</h3>
+              <button type="button" class="secondary-btn" data-action="add-question">+ pergunta</button>
+            </div>
+            ${questionEditor(quiz.questions[questionIndex], questionIndex)}
+          `;
+        }
+
+        if (stage === quiz.questions.length + 2) {
           return `
             <h3>Loading</h3>
             <label class="field">
@@ -1846,7 +1979,7 @@
           `;
         }
 
-        if (stage === quiz.questions.length + 2) {
+        if (stage === quiz.questions.length + 3) {
           const activeResultIndex = Math.min(state.adminResultIndex, quiz.results.length - 1);
           return `
             <div class="section-title compact">
@@ -2987,6 +3120,8 @@
             const action = element.dataset.action;
             if (action) event.preventDefault();
             if (action === "add-quiz") addQuiz();
+            if (action === "undo-editor") undoEditor();
+            if (action === "redo-editor") redoEditor();
             if (action === "select-admin-tab") {
               state.adminTab = element.dataset.tab || "home";
               render();
@@ -3048,6 +3183,15 @@
             }
             if (action === "add-question") addQuestion();
             if (action === "remove-question") removeQuestion(Number(element.dataset.q));
+            if (action === "request-delete-question") requestDeleteQuestion(Number(element.dataset.question));
+            if (action === "cancel-delete-question") {
+              state.pendingDeleteQuestionIndex = null;
+              render();
+            }
+            if (action === "confirm-delete-question") {
+              const confirmation = document.querySelector("[data-delete-confirm-input]")?.value || "";
+              if (confirmation === "EXCLUIR") removeQuestion(state.pendingDeleteQuestionIndex);
+            }
             if (action === "add-option") addOption(Number(element.dataset.q));
             if (action === "remove-option") removeOption(Number(element.dataset.q), Number(element.dataset.o));
             if (action === "add-result") addResult();
@@ -3140,7 +3284,7 @@
               render();
             }
             if (action === "preview-name-next" && !isPublicPage) {
-              state.adminStage = Math.min(1, quiz.questions.length);
+              state.adminStage = Math.min(2, quiz.questions.length + 1);
               render();
             } else if (action === "preview-name-next" || action === "name-next") {
               const nameInput = document.querySelector("[data-traveler-name]");
@@ -3156,8 +3300,8 @@
               } else if (action === "name-next") {
                 setCurrentRunIgnored(quiz, false);
               }
-              const introConnection = flowConnectionFor(quiz, "intro", null);
-              if (!applyFlowTarget(quiz, introConnection?.to)) {
+              const nameConnection = flowConnectionFor(quiz, "name", null);
+              if (!applyFlowTarget(quiz, nameConnection?.to)) {
                 state.flowStage = "quiz";
                 state.previewStep = 0;
               }
@@ -3166,7 +3310,7 @@
               render();
             }
             if (action === "preview-answer" && !isPublicPage) {
-              state.adminStage = Math.min(state.adminStage + 1, quiz.questions.length + 1);
+              state.adminStage = Math.min(state.adminStage + 1, quiz.questions.length + 2);
               render();
             } else if (action === "preview-answer" || action === "answer") {
               const answeredStep = state.previewStep;
@@ -3208,6 +3352,20 @@
             document.querySelector(`[data-delay-target="${CSS.escape(card.dataset.locateTarget)}"]`)?.classList.remove("located-stage-element");
           });
         });
+
+        const deleteConfirmInput = document.querySelector("[data-delete-confirm-input]");
+        if (deleteConfirmInput) {
+          deleteConfirmInput.addEventListener("input", () => {
+            const button = document.querySelector("[data-action='confirm-delete-question']");
+            if (button) button.disabled = deleteConfirmInput.value !== "EXCLUIR";
+          });
+          deleteConfirmInput.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" || deleteConfirmInput.value !== "EXCLUIR") return;
+            event.preventDefault();
+            removeQuestion(state.pendingDeleteQuestionIndex);
+          });
+          window.requestAnimationFrame(() => deleteConfirmInput.focus());
+        }
 
         document.querySelectorAll("[data-field]").forEach((input) => {
           input.addEventListener("input", () => {
@@ -3523,30 +3681,79 @@
             temporary.classList.add("temporary-connection");
             overlay.appendChild(temporary);
             document.body.appendChild(overlay);
-            port.setPointerCapture(event.pointerId);
+            const compatibleInputs = [...document.querySelectorAll("[data-flow-input]")].filter((input) => {
+              const rect = input.getBoundingClientRect();
+              return rect.left + rect.width / 2 > start.x + 20 && input.dataset.flowInput !== from;
+            });
+            compatibleInputs.forEach((input) => input.classList.add("connection-target-available"));
+            const compatibleCards = compatibleInputs.map((input) => input.closest(".funnel-node-wrap")).filter(Boolean);
+            compatibleCards.forEach((card) => card.querySelector(".funnel-node")?.classList.add("connection-card-available"));
+            let lockedInput = null;
+            let lastPoint = { ...start };
+            const targetAt = (x, y) => {
+              const direct = document.elementFromPoint(x, y)?.closest("[data-flow-input]");
+              if (direct && compatibleInputs.includes(direct)) return direct;
+              return compatibleInputs
+                .map((candidate) => {
+                  const card = candidate.closest(".funnel-node-wrap")?.querySelector(".funnel-node");
+                  const rect = card?.getBoundingClientRect();
+                  if (!rect) return { candidate, distance: Infinity };
+                  const dx = Math.max(rect.left - x, 0, x - rect.right);
+                  const dy = Math.max(rect.top - y, 0, y - rect.bottom);
+                  return { candidate, distance: Math.hypot(dx, dy) };
+                })
+                .filter((item) => item.distance <= 160)
+                .sort((a, b) => a.distance - b.distance)[0]?.candidate || null;
+            };
+            const showLockedTarget = (input) => {
+              compatibleCards.forEach((card) => card.querySelector(".funnel-node")?.classList.remove("connection-card-target"));
+              input?.closest(".funnel-node-wrap")?.querySelector(".funnel-node")?.classList.add("connection-card-target");
+            };
             const move = (moveEvent) => {
+              if (moveEvent.pointerId !== event.pointerId) return;
               moved = true;
               const x = moveEvent.clientX;
               const y = moveEvent.clientY;
-              const middle = (start.x + x) / 2;
-              temporary.setAttribute("d", `M ${start.x} ${start.y} C ${middle} ${start.y}, ${middle} ${y}, ${x} ${y}`);
+              lastPoint = { x, y };
+              lockedInput = targetAt(x, y);
+              showLockedTarget(lockedInput);
+              const lockedRect = lockedInput?.getBoundingClientRect();
+              const endX = lockedRect ? lockedRect.left + lockedRect.width / 2 : x;
+              const endY = lockedRect ? lockedRect.top + lockedRect.height / 2 : y;
+              const middle = (start.x + endX) / 2;
+              temporary.setAttribute("d", `M ${start.x} ${start.y} C ${middle} ${start.y}, ${middle} ${endY}, ${endX} ${endY}`);
             };
             const end = (upEvent) => {
-              port.removeEventListener("pointermove", move);
-              port.removeEventListener("pointerup", end);
+              if (upEvent.pointerId !== event.pointerId) return;
+              document.removeEventListener("pointermove", move, true);
+              document.removeEventListener("pointerup", end, true);
+              document.removeEventListener("pointercancel", cancel, true);
               overlay.remove();
-              const input = document.elementFromPoint(upEvent.clientX, upEvent.clientY)?.closest("[data-flow-input]");
+              compatibleInputs.forEach((input) => input.classList.remove("connection-target-available"));
+              compatibleCards.forEach((card) => card.querySelector(".funnel-node")?.classList.remove("connection-card-target", "connection-card-available"));
+              const input = lockedInput || targetAt(upEvent.clientX, upEvent.clientY) || targetAt(lastPoint.x, lastPoint.y);
               if (input) {
                 activeQuiz().flowConnections = (activeQuiz().flowConnections || []).filter((connection) => !(connection.from === from && (connection.option ?? null) === (option ?? null)));
                 activeQuiz().flowConnections.push({ from, to: input.dataset.flowInput, option });
+                activeQuiz().flowDisconnected = (activeQuiz().flowDisconnected || []).filter((key) => key !== from && key !== input.dataset.flowInput);
                 saveQuizzes();
                 render();
               } else if (!moved && existing) {
                 showConnectionContextMenu(upEvent.clientX, upEvent.clientY, from, option);
               }
             };
-            port.addEventListener("pointermove", move);
-            port.addEventListener("pointerup", end);
+            const cancel = (cancelEvent) => {
+              if (cancelEvent.pointerId !== event.pointerId) return;
+              document.removeEventListener("pointermove", move, true);
+              document.removeEventListener("pointerup", end, true);
+              document.removeEventListener("pointercancel", cancel, true);
+              overlay.remove();
+              compatibleInputs.forEach((input) => input.classList.remove("connection-target-available"));
+              compatibleCards.forEach((card) => card.querySelector(".funnel-node")?.classList.remove("connection-card-target", "connection-card-available"));
+            };
+            document.addEventListener("pointermove", move, true);
+            document.addEventListener("pointerup", end, true);
+            document.addEventListener("pointercancel", cancel, true);
           });
         });
 
@@ -3603,7 +3810,7 @@
         menu.className = "funnel-context-menu";
         menu.style.left = `${x}px`;
         menu.style.top = `${y}px`;
-        menu.innerHTML = `<strong>Conexão</strong><button type="button">Desconectar linha</button>`;
+        menu.innerHTML = `<strong>Conexão</strong><button type="button">✂ Cortar conexão</button>`;
         menu.querySelector("button").addEventListener("click", () => {
           activeQuiz().flowConnections = (activeQuiz().flowConnections || []).filter((connection) => !(connection.from === from && (connection.option ?? null) === (option ?? null)));
           saveQuizzes();
