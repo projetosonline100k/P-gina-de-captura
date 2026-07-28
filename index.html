@@ -153,6 +153,7 @@
         lead: { name: "", email: "", phone: "" },
         remoteLoaded: false,
         remoteLoading: false,
+        funnelRefreshing: false,
         remoteError: "",
         publicQuizLoads: {},
         unpublishedQuizIds: new Set(),
@@ -496,6 +497,23 @@
         } finally {
           state.remoteLoading = false;
           render();
+        }
+      }
+
+      async function refreshRemoteFunnel() {
+        if (!supabaseEnabled() || state.funnelRefreshing) return;
+        state.funnelRefreshing = true;
+        try {
+          const rows = await supabaseRequest("quiz_funnel?select=*&order=updated_at.asc");
+          state.funnel = mergeFunnelRecords(state.funnel, (rows || []).map(remoteFunnel));
+          saveFunnel();
+          state.remoteError = "";
+        } catch (error) {
+          console.warn("Não foi possível atualizar o funil:", error);
+          state.remoteError = "Não foi possível atualizar o funil agora.";
+        } finally {
+          state.funnelRefreshing = false;
+          if (adminRoute() && state.adminTab === "flow") render();
         }
       }
 
@@ -3330,6 +3348,7 @@
             if (action === "select-admin-tab") {
               state.adminTab = element.dataset.tab || "home";
               render();
+              if (state.adminTab === "flow") refreshRemoteFunnel();
             }
             if (action === "select-builder-view") {
               state.builderView = element.dataset.builderView || "flow";
@@ -4153,9 +4172,17 @@
       });
       window.addEventListener("focus", () => {
         if (!adminRoute()) return;
-        state.remoteLoaded = false;
-        loadRemoteData();
+        if (state.adminTab === "flow") refreshRemoteFunnel();
+        else {
+          state.remoteLoaded = false;
+          loadRemoteData();
+        }
       });
+      window.setInterval(() => {
+        if (document.visibilityState === "visible" && adminRoute() && state.adminTab === "flow") {
+          refreshRemoteFunnel();
+        }
+      }, 10000);
     </script>
   </body>
 </html>
