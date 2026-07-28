@@ -1368,6 +1368,19 @@
 
       function recordCheckoutClick(quiz) {
         recordFunnelStep(quiz, { key: "checkout", rank: quiz.questions.length + 5 });
+        if (adminRoute()) return;
+        const now = new Date().toISOString();
+        const clickRecord = {
+          sessionId: `${currentFunnelSessionId(quiz)}:checkout-click:${uid("click")}`,
+          quizId: quiz.id,
+          createdAt: now,
+          updatedAt: now,
+          maxRank: quiz.questions.length + 5,
+          stage: "checkout-click"
+        };
+        state.funnel.push(clickRecord);
+        saveFunnel();
+        syncFunnel(clickRecord);
       }
 
       function removeCurrentFunnelRecord(quiz) {
@@ -2552,8 +2565,9 @@
 
       function quizFunnelRecords(quiz) {
         const records = state.funnel.filter((item) => item.quizId === quiz.id);
+        const journeyRecords = records.filter((item) => item.stage !== "checkout-click");
         const resultRank = quiz.questions.length + 4;
-        const completedTracked = records.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
+        const completedTracked = journeyRecords.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
         const submissions = quizSubmissions(quiz);
         const missingCompleted = Math.max(0, submissions.length - completedTracked);
         const missingSubmissions = missingCompleted ? submissions.slice(-missingCompleted) : [];
@@ -2612,8 +2626,9 @@
         const resultCounts = countBy(submissions, "resultProfile");
         const topResult = Object.entries(resultCounts).sort((a, b) => b[1] - a[1])[0];
         const resultRank = quiz.questions.length + 4;
-        const visitors = funnelRecords.length;
-        const completed = funnelRecords.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
+        const visitorRecords = funnelRecords.filter((item) => item.stage !== "checkout-click");
+        const visitors = visitorRecords.length;
+        const completed = visitorRecords.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
         const completionRate = visitors ? `${Math.round((completed / visitors) * 100)}%` : "0%";
         return `
           <section class="admin-page">
@@ -2860,14 +2875,21 @@
 
       function funnelView(quiz, records) {
         const steps = funnelSteps(quiz);
-        const visitorCount = records.filter((item) => Number(item.maxRank || 0) >= 0).length;
+        const clickEvents = records.filter((item) => item.stage === "checkout-click");
+        const journeyRecords = records.filter((item) => item.stage !== "checkout-click");
+        const visitorCount = journeyRecords.filter((item) => Number(item.maxRank || 0) >= 0).length;
         const total = visitorCount || 1;
         const resultRank = quiz.questions.length + 4;
         const checkoutRank = quiz.questions.length + 5;
-        const resultCount = records.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
-        const checkoutCount = records.filter((item) => Number(item.maxRank || 0) >= checkoutRank).length;
-        const checkoutConversion = Math.round((checkoutCount / total) * 100);
-        const resultToCheckout = resultCount ? Math.round((checkoutCount / resultCount) * 100) : 0;
+        const resultCount = journeyRecords.filter((item) => Number(item.maxRank || 0) >= resultRank).length;
+        const checkoutVisitors = journeyRecords.filter((item) => Number(item.maxRank || 0) >= checkoutRank).length;
+        const sessionsWithEvents = new Set(clickEvents.map((item) => item.sessionId.split(":checkout-click:")[0]));
+        const legacyCheckoutVisitors = journeyRecords.filter((item) =>
+          Number(item.maxRank || 0) >= checkoutRank && !sessionsWithEvents.has(item.sessionId)
+        ).length;
+        const checkoutClicks = clickEvents.length + legacyCheckoutVisitors;
+        const checkoutConversion = Math.round((checkoutVisitors / total) * 100);
+        const resultToCheckout = resultCount ? Math.round((checkoutVisitors / resultCount) * 100) : 0;
         return `
           <article class="funnel-panel">
             <div class="funnel-head">
@@ -2878,21 +2900,22 @@
               <strong>${visitorCount} visitante(s)</strong>
             </div>
             <div class="funnel-summary">
-              <div><span>Cliques no checkout</span><strong>${checkoutCount}</strong></div>
+              <div><span>Cliques no checkout</span><strong>${checkoutClicks}</strong></div>
               <div><span>Conversão total</span><strong>${checkoutConversion}%</strong></div>
               <div><span>Resultado → checkout</span><strong>${resultToCheckout}%</strong></div>
             </div>
             <div class="funnel-chart">
               ${steps.map((step, index) => {
-                const count = records.filter((item) => Number(item.maxRank || 0) >= step.rank).length;
-                const previous = index === 0 ? count : records.filter((item) => Number(item.maxRank || 0) >= steps[index - 1].rank).length;
+                const count = journeyRecords.filter((item) => Number(item.maxRank || 0) >= step.rank).length;
+                const previous = index === 0 ? count : journeyRecords.filter((item) => Number(item.maxRank || 0) >= steps[index - 1].rank).length;
                 const percent = Math.round((count / total) * 100);
                 const drop = Math.max(0, previous - count);
+                const displayedCount = step.key === "checkout" ? checkoutClicks : count;
                 return `
                   <div class="funnel-step" style="--pct:${percent}">
                     <span>${escapeHtml(step.label)}</span>
                     <b>${percent}%</b>
-                    <strong>${count}</strong>
+                    <strong>${displayedCount}</strong>
                     <small>${drop ? `-${drop} queda` : "sem queda"}</small>
                     <i></i>
                     ${step.key === "checkout" ? `<button class="select-checkout-buttons" type="button" data-action="toggle-checkout-picker">Selecionar botões</button>` : ""}
