@@ -3,6 +3,9 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>QuizLab - Dashboard de Quiz Inteligente</title>
     <meta
       name="description"
@@ -50,6 +53,7 @@
       const STORAGE_KEY = "quizlab_quizzes_v3";
       const SUBMISSIONS_KEY = "quizlab_submissions_v1";
       const FUNNEL_KEY = "quizlab_funnel_v1";
+      const APP_BUILD_VERSION = "20260728-2";
       const SUPABASE_URL = "https://iofaapgqxixcvgxizjyu.supabase.co";
       const SUPABASE_KEY = "sb_publishable_3PLbdXuIHwBmQDA0gMbqdw_ZfBTT1a1";
 
@@ -562,6 +566,7 @@
         url.search = "";
         url.hash = "";
         url.searchParams.set("quiz", slugFor(quiz));
+        url.searchParams.set("v", APP_BUILD_VERSION);
         return url.toString();
       }
 
@@ -571,6 +576,7 @@
         url.hash = "";
         url.searchParams.set("preview", "1");
         url.searchParams.set("quiz", slugFor(activeQuiz()));
+        url.searchParams.set("v", APP_BUILD_VERSION);
         return url.toString();
       }
 
@@ -1370,7 +1376,7 @@
 
       function recordCheckoutClick(quiz) {
         recordFunnelStep(quiz, { key: "checkout", rank: quiz.questions.length + 5 });
-        if (adminRoute()) return;
+        if (adminRoute()) return Promise.resolve();
         const now = new Date().toISOString();
         const clickRecord = {
           sessionId: `${currentFunnelSessionId(quiz)}:checkout-click:${uid("click")}`,
@@ -1382,7 +1388,7 @@
         };
         state.funnel.push(clickRecord);
         saveFunnel();
-        syncFunnel(clickRecord, true);
+        return syncFunnel(clickRecord, true);
       }
 
       function removeCurrentFunnelRecord(quiz) {
@@ -3417,8 +3423,15 @@
             if (action === "copy-link") copyLink();
             if (action === "checkout-click" || action === "preview-checkout-click") {
               const href = element.getAttribute("href");
-              if (action === "checkout-click") recordCheckoutClick(quiz);
-              if (action === "checkout-click" && href) window.open(href, "_blank", "noopener");
+              if (action === "checkout-click") {
+                const saveClick = recordCheckoutClick(quiz);
+                if (href && href !== "#") {
+                  Promise.race([
+                    saveClick,
+                    new Promise((resolve) => window.setTimeout(resolve, 1500))
+                  ]).finally(() => window.location.assign(href));
+                }
+              }
             }
             if (action === "clear-submissions") {
               const quizId = activeQuiz().id;
