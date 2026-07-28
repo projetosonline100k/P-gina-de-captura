@@ -2165,7 +2165,7 @@ select:focus {
 
 .inline-timer-targets {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
   gap: 8px;
 }
 
@@ -2214,24 +2214,112 @@ select:focus {
 .timer-target-list {
   display: grid;
   gap: 8px;
-  padding: 10px;
-  border: 1px solid #e1e6ec;
-  border-radius: 8px;
-  background: #f8fafc;
+  padding: 0;
 }
 
-.check-row {
+.visibility-item {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #4b5563;
-  font-size: 13px;
-  font-weight: 700;
+  min-width: 0;
+  align-items: stretch;
+  justify-content: space-between;
+  overflow: hidden;
+  border: 1px solid #dce3ed;
+  border-radius: 12px;
+  background: #fff;
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
 }
 
-.check-row input {
-  width: 16px;
-  height: 16px;
+.visibility-item:hover {
+  border-color: #2d76df;
+  box-shadow: 0 5px 16px rgba(45, 118, 223, 0.12);
+}
+
+.visibility-item.delayed {
+  border-color: #2d76df;
+  background: #edf5ff;
+}
+
+.visibility-item > label,
+.inline-timer-targets .visibility-item > label {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  grid-template-columns: 22px 34px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 0;
+  cursor: pointer;
+}
+
+.visibility-item input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: #2d76df;
+}
+
+.visibility-icon {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 8px;
+  color: #245fba;
+  background: #e8f1ff;
+  font-weight: 900;
+}
+
+.visibility-copy {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.visibility-copy strong {
+  overflow: hidden;
+  color: #202733;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visibility-copy small {
+  overflow: hidden;
+  color: #6b7685;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.visibility-copy em {
+  color: #64748b;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+}
+
+.visibility-item.delayed .visibility-copy em {
+  color: #245fba;
+}
+
+.visibility-item > button {
+  padding: 0 12px;
+  border: 0;
+  border-left: 1px solid #dce3ed;
+  color: #2d63b8;
+  background: rgba(255, 255, 255, 0.62);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.visibility-item > button:hover {
+  background: #fff;
+}
+
+.located-stage-element {
+  outline: 4px solid #f59e0b !important;
+  outline-offset: 6px !important;
+  box-shadow: 0 0 0 8px rgba(245, 158, 11, 0.18) !important;
 }
 
 .added-components {

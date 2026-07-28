@@ -1408,7 +1408,11 @@
             if (action === "restore-stage-element") restoreStageElement(element.dataset.targetId);
             if (action === "move-custom-up") moveStageComponent(element.dataset.componentId, -1);
             if (action === "move-custom-down") moveStageComponent(element.dataset.componentId, 1);
-            if (!["remove-stage-component", "clear-stage-image", "move-custom-up", "move-custom-down", "select-custom-component"].includes(action)) render();
+            if (action === "locate-stage-element") {
+              locateStageElement(element.dataset.targetId);
+              return;
+            }
+            if (!["remove-stage-component", "clear-stage-image", "move-custom-up", "move-custom-down", "select-custom-component", "locate-stage-element"].includes(action)) render();
           });
         });
       }
@@ -1454,7 +1458,18 @@
             timer.targetIds ||= [];
             if (input.checked && !timer.targetIds.includes(input.value)) timer.targetIds.push(input.value);
             if (!input.checked) timer.targetIds = timer.targetIds.filter((id) => id !== input.value);
+            const card = input.closest(".visibility-item");
+            card?.classList.toggle("delayed", input.checked);
+            card?.classList.toggle("immediate", !input.checked);
+            const status = card?.querySelector("em");
+            if (status) status.textContent = input.checked ? "Aparece após o timer" : "Aparece imediatamente";
             saveQuizzes();
+          });
+        });
+        root.querySelectorAll("[data-locate-target]").forEach((card) => {
+          card.addEventListener("mouseenter", () => locateStageElement(card.dataset.locateTarget, true));
+          card.addEventListener("mouseleave", () => {
+            root.querySelector(`[data-delay-target="${CSS.escape(card.dataset.locateTarget)}"]`)?.classList.remove("located-stage-element");
           });
         });
         root.querySelectorAll("[data-timer-countdown]").forEach((input) => {
@@ -1998,6 +2013,12 @@
           event.preventDefault();
           removeStageComponent(event.currentTarget.dataset.componentId);
         });
+        root.querySelectorAll("[data-action='locate-stage-element']").forEach((button) => {
+          button.addEventListener("click", (event) => {
+            event.preventDefault();
+            locateStageElement(button.dataset.targetId);
+          });
+        });
         root.querySelectorAll("[data-stage-component]").forEach((input) => {
           input.addEventListener("input", () => {
             const component = stageComponentById(input.dataset.stageComponent);
@@ -2006,6 +2027,27 @@
             component[input.dataset.componentKey] = input.value;
             saveQuizzes();
             refreshAdminCanvas();
+          });
+        });
+        root.querySelectorAll("[data-timer-target]").forEach((input) => {
+          input.addEventListener("change", () => {
+            const timer = stageComponentById(input.dataset.timerTarget);
+            if (!timer) return;
+            timer.targetIds ||= [];
+            if (input.checked && !timer.targetIds.includes(input.value)) timer.targetIds.push(input.value);
+            if (!input.checked) timer.targetIds = timer.targetIds.filter((id) => id !== input.value);
+            const card = input.closest(".visibility-item");
+            card?.classList.toggle("delayed", input.checked);
+            card?.classList.toggle("immediate", !input.checked);
+            const status = card?.querySelector("em");
+            if (status) status.textContent = input.checked ? "Aparece após o timer" : "Aparece imediatamente";
+            saveQuizzes();
+          });
+        });
+        root.querySelectorAll("[data-locate-target]").forEach((card) => {
+          card.addEventListener("mouseenter", () => locateStageElement(card.dataset.locateTarget, true));
+          card.addEventListener("mouseleave", () => {
+            document.querySelector(`[data-delay-target="${CSS.escape(card.dataset.locateTarget)}"]`)?.classList.remove("located-stage-element");
           });
         });
       }
@@ -2069,20 +2111,102 @@
         bindSelectedComponentSettings(panel);
       }
 
+      function locateStageElement(targetId, keepHighlight = false) {
+        const frame = document.querySelector(".selected-outline");
+        const target = frame?.querySelector(`[data-delay-target="${CSS.escape(targetId)}"]`);
+        if (!target) return;
+        target.scrollIntoView({ behavior: "smooth", block: "center", inline: "nearest" });
+        target.classList.add("located-stage-element");
+        if (!keepHighlight) window.setTimeout(() => target.classList.remove("located-stage-element"), 1800);
+      }
+
       function timerTargetOptions(quiz, stage) {
+        return timerTargetDetails(quiz, stage).map((item) => [item.id, item.label]);
+      }
+
+      function timerTargetDetails(quiz, stage) {
         const key = stageKey(quiz, stage);
         const common = {
-          intro: [["intro-title", "Título"], ["intro-image", "Imagem principal"], ["intro-subtitle", "Subtítulo"], ["intro-cta", "Botão de começar"], ["intro-trust", "Selos de segurança"]],
-          loading: [["loading-title", "Título do carregamento"], ["loading-progress", "Barra de progresso"], ["loading-social", "Depoimentos"]],
-          result: [["result-kicker", "Seu perfil"], ["result-title", "Título do resultado"], ["result-diagnosis", "Diagnóstico"], ["result-organization-title", "Título: Precisa de organização"], ["result-copy", "Texto de venda"], ["result-benefits", "Benefícios"], ["result-cta", "Botão principal"]]
+          intro: [
+            { id: "intro-title", label: "Título", type: "Texto", preview: quiz.title },
+            { id: "intro-image", label: "Imagem principal", type: "Imagem", preview: "Foto principal da abertura" },
+            { id: "intro-subtitle", label: "Subtítulo", type: "Texto", preview: quiz.subtitle },
+            { id: "intro-cta", label: "Botão de começar", type: "Botão", preview: "Começar o diagnóstico" },
+            { id: "intro-trust", label: "Selos de segurança", type: "Selos", preview: "Site seguro · SSL · Google" }
+          ],
+          loading: [
+            { id: "loading-title", label: "Título do carregamento", type: "Texto", preview: "Estamos calculando seu diagnóstico…" },
+            { id: "loading-progress", label: "Barra de progresso", type: "Progresso", preview: "Carregamento de 0% a 100%" },
+            { id: "loading-social", label: "Depoimentos", type: "Depoimentos", preview: "Relatos de Jaci e Davi" }
+          ],
+          result: [
+            { id: "result-kicker", label: "Seu perfil", type: "Texto", preview: "Seu perfil" },
+            { id: "result-title", label: "Título do resultado", type: "Título", preview: quiz.results[0]?.title || "Resultado" },
+            { id: "result-diagnosis", label: "Diagnóstico", type: "Texto", preview: quiz.results[0]?.text || "Diagnóstico personalizado" },
+            { id: "result-organization-title", label: "Precisa de organização", type: "Título", preview: "Mas você não precisa de mais dinheiro…" },
+            { id: "result-copy", label: "Texto de venda", type: "Texto", preview: "Quem viaja com frequência não é quem ganha mais…" },
+            { id: "result-benefits", label: "Benefícios", type: "Lista", preview: (quiz.results[0]?.bullets || []).join(" · ") },
+            { id: "result-cta", label: "Botão principal", type: "Botão", preview: quiz.ctaLabel }
+          ]
         };
         const base = key.startsWith("question:")
-          ? [["question-title", "Pergunta"], ["question-options", "Opções de resposta"]]
+          ? [
+              { id: "question-title", label: "Pergunta", type: "Título", preview: quiz.questions[Number(key.split(":")[1])]?.text || "Pergunta" },
+              { id: "question-options", label: "Opções de resposta", type: "Opções", preview: (quiz.questions[Number(key.split(":")[1])]?.options || []).map((option) => option.text).join(" · ") }
+            ]
           : (common[key] || []);
         const custom = (quiz.stageComponents?.[key] || [])
           .filter((item) => item.type !== "Timer")
-          .map((item, index) => [`component:${item.id}`, `${item.type} ${index + 1}`]);
-        return [...base, ...custom];
+          .map((item) => ({
+            id: `component:${item.id}`,
+            label: item.customName || item.title || item.type,
+            type: item.type,
+            preview: item.content || item.price || item.features || `${item.type} adicionado`,
+            position: Math.max(0, Math.min(4, Number(item.position ?? 4)))
+          }));
+        const sequence = key === "intro"
+          ? ["@0", "intro-title", "@1", "intro-image", "@2", "intro-subtitle", "@3", "intro-cta", "@4", "intro-trust"]
+          : key === "loading"
+            ? ["@0", "loading-title", "@1", "loading-progress", "@2", "loading-social", "@3", "@4"]
+            : key === "result"
+              ? ["@0", "result-kicker", "result-title", "@1", "result-diagnosis", "@2", "result-organization-title", "result-copy", "@3", "result-benefits", "@4", "result-cta"]
+              : key.startsWith("question:")
+                ? ["@0", "question-title", "@1", "@2", "question-options", "@3", "@4"]
+                : [];
+        const baseById = new Map(base.map((item) => [item.id, item]));
+        const ordered = sequence.flatMap((token) => {
+          if (token.startsWith("@")) {
+            const position = Number(token.slice(1));
+            return custom.filter((item) => item.position === position);
+          }
+          return baseById.has(token) ? [baseById.get(token)] : [];
+        });
+        const included = new Set(ordered.map((item) => item.id));
+        return [...ordered, ...base.filter((item) => !included.has(item.id)), ...custom.filter((item) => !included.has(item.id))];
+      }
+
+      function timerTargetCards(quiz, stage, selected, timerId) {
+        const icons = { Texto: "T", Título: "T", Imagem: "▧", Botão: "▭", Lista: "☷", Vídeo: "▶", Preço: "$", Opções: "☑", Progresso: "◒", Depoimentos: "❞", Selos: "✓" };
+        const targets = timerTargetDetails(quiz, stage);
+        if (!targets.length) return `<p class="settings-note">Adicione outro componente nesta etapa para controlá-lo.</p>`;
+        return targets.map((item) => {
+          const delayed = selected.includes(item.id);
+          const preview = String(item.preview || "").replace(/\s+/g, " ").trim().slice(0, 88);
+          return `
+            <article class="visibility-item ${delayed ? "delayed" : "immediate"}" data-locate-target="${escapeAttr(item.id)}">
+              <label>
+                <input type="checkbox" value="${escapeAttr(item.id)}" ${delayed ? "checked" : ""} data-timer-target="${timerId}">
+                <span class="visibility-icon">${icons[item.type] || "◆"}</span>
+                <span class="visibility-copy">
+                  <strong>${escapeHtml(item.label)}</strong>
+                  <small>${escapeHtml(item.type)} · ${escapeHtml(preview || "Sem conteúdo")}</small>
+                  <em>${delayed ? "Aparece após o timer" : "Aparece imediatamente"}</em>
+                </span>
+              </label>
+              <button type="button" data-action="locate-stage-element" data-target-id="${escapeAttr(item.id)}">Localizar</button>
+            </article>
+          `;
+        }).join("");
       }
 
       function timerComponentEditor(quiz, stage, component) {
@@ -2093,14 +2217,13 @@
             <p class="timer-behavior-note">Os elementos marcados começam escondidos e aparecem quando o tempo terminar. O relógio não aparece para o usuário.</p>
             <strong class="timer-target-title">Elementos afetados</strong>
             <div class="timer-target-list">
-              ${timerTargetOptions(quiz, stage).map(([id, label]) => `<label class="check-row"><input type="checkbox" value="${escapeAttr(id)}" ${selected.includes(id) ? "checked" : ""} data-timer-target="${component.id}"> ${escapeHtml(label)}</label>`).join("") || `<p class="settings-note">Adicione outro componente nesta etapa para controlá-lo.</p>`}
+              ${timerTargetCards(quiz, stage, selected, component.id)}
             </div>
           </div>
         `;
       }
 
       function inlineTimerEditor(component) {
-        const targets = timerTargetOptions(activeQuiz(), state.adminStage);
         const selected = component.targetIds || [];
         return `
           <div class="inline-timer-editor">
@@ -2110,7 +2233,7 @@
             <p class="timer-behavior-note">Os itens marcados começam escondidos e aparecem após esse tempo. O relógio fica invisível para o usuário.</p>
             <strong>O que este Timer controla?</strong>
             <div class="inline-timer-targets">
-              ${targets.map(([id, label]) => `<label><input type="checkbox" value="${escapeAttr(id)}" ${selected.includes(id) ? "checked" : ""} data-timer-target="${component.id}"><span>${escapeHtml(label)}</span></label>`).join("") || `<p>Adicione um elemento nesta etapa para poder selecioná-lo.</p>`}
+              ${timerTargetCards(activeQuiz(), state.adminStage, selected, component.id)}
             </div>
           </div>
         `;
@@ -2938,6 +3061,7 @@
             if (action === "restore-stage-element") restoreStageElement(element.dataset.targetId);
             if (action === "move-custom-up") moveStageComponent(element.dataset.componentId, -1);
             if (action === "move-custom-down") moveStageComponent(element.dataset.componentId, 1);
+            if (action === "locate-stage-element") locateStageElement(element.dataset.targetId);
             if (action === "select-custom-component") {
               const clickedEditableText = event.target.closest(".custom-text-content");
               if (!clickedEditableText && event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, .inline-timer-editor, input, textarea, select, [contenteditable='true']")) return;
@@ -3075,6 +3199,13 @@
               setCurrentRunIgnored(quiz, false);
               render();
             }
+          });
+        });
+
+        document.querySelectorAll("[data-locate-target]").forEach((card) => {
+          card.addEventListener("mouseenter", () => locateStageElement(card.dataset.locateTarget, true));
+          card.addEventListener("mouseleave", () => {
+            document.querySelector(`[data-delay-target="${CSS.escape(card.dataset.locateTarget)}"]`)?.classList.remove("located-stage-element");
           });
         });
 
@@ -3219,6 +3350,11 @@
             timer.targetIds ||= [];
             if (input.checked && !timer.targetIds.includes(input.value)) timer.targetIds.push(input.value);
             if (!input.checked) timer.targetIds = timer.targetIds.filter((id) => id !== input.value);
+            const card = input.closest(".visibility-item");
+            card?.classList.toggle("delayed", input.checked);
+            card?.classList.toggle("immediate", !input.checked);
+            const status = card?.querySelector("em");
+            if (status) status.textContent = input.checked ? "Aparece após o timer" : "Aparece imediatamente";
             saveQuizzes();
           });
         });
