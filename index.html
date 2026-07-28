@@ -53,7 +53,7 @@
       const STORAGE_KEY = "quizlab_quizzes_v3";
       const SUBMISSIONS_KEY = "quizlab_submissions_v1";
       const FUNNEL_KEY = "quizlab_funnel_v1";
-      const APP_BUILD_VERSION = "20260728-2";
+      const APP_BUILD_VERSION = "20260728-3";
       const SUPABASE_URL = "https://iofaapgqxixcvgxizjyu.supabase.co";
       const SUPABASE_KEY = "sb_publishable_3PLbdXuIHwBmQDA0gMbqdw_ZfBTT1a1";
 
@@ -473,13 +473,27 @@
         return [...map.values()];
       }
 
+      async function loadAllRemoteFunnelRows() {
+        const pageSize = 1000;
+        const rows = [];
+        for (let offset = 0; offset < 50000; offset += pageSize) {
+          const page = await supabaseRequest(
+            `quiz_funnel?select=*&order=updated_at.desc&limit=${pageSize}&offset=${offset}`
+          );
+          if (!Array.isArray(page)) break;
+          rows.push(...page);
+          if (page.length < pageSize) break;
+        }
+        return rows;
+      }
+
       async function loadRemoteData() {
         if (!supabaseEnabled() || state.remoteLoading || state.remoteLoaded) return;
         state.remoteLoading = true;
         try {
           const [submissionRows, funnelRows] = await Promise.all([
             supabaseRequest("quiz_submissions?select=*&order=created_at.asc"),
-            supabaseRequest("quiz_funnel?select=*&order=updated_at.asc")
+            loadAllRemoteFunnelRows()
           ]);
           const remoteSubmissions = (submissionRows || [])
             .filter((row) => row.result_profile !== "__quiz_definition__")
@@ -504,7 +518,7 @@
         if (!supabaseEnabled() || state.funnelRefreshing) return;
         state.funnelRefreshing = true;
         try {
-          const rows = await supabaseRequest("quiz_funnel?select=*&order=updated_at.asc");
+          const rows = await loadAllRemoteFunnelRows();
           state.funnel = mergeFunnelRecords(state.funnel, (rows || []).map(remoteFunnel));
           saveFunnel();
           state.remoteError = "";
