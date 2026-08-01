@@ -292,6 +292,52 @@ select:focus {
   gap: 8px;
 }
 
+.option-style-card {
+  display: grid;
+  gap: 10px;
+  padding: 13px;
+  border: 1px solid #dde5ef;
+  border-radius: 12px;
+  background: #fbfcfe;
+}
+
+.option-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #344054;
+}
+
+.option-editor-head .mini-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 7px;
+  color: #dc2626;
+  background: #fee2e2;
+}
+
+.option-color-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.option-style-card details {
+  padding-top: 8px;
+  border-top: 1px solid #e4eaf2;
+}
+
+.option-style-card summary {
+  color: #64748b;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.option-style-card details .field {
+  margin-top: 8px;
+}
+
 .primary-btn,
 .secondary-btn,
 .ghost-btn,
@@ -303,6 +349,33 @@ select:focus {
   border: 0;
   cursor: pointer;
   font-weight: 800;
+}
+
+.answer-btn.option-style-default {
+  border-color: var(--option-border);
+  color: var(--option-text);
+  background: var(--option-bg);
+}
+
+.answer-btn.option-style-outline {
+  border-width: 2px;
+  border-color: var(--option-border);
+  color: var(--option-text);
+  background: transparent;
+  box-shadow: none;
+}
+
+.answer-btn.option-style-soft {
+  border-color: color-mix(in srgb, var(--option-border) 55%, transparent);
+  color: var(--option-text);
+  background: color-mix(in srgb, var(--option-bg) 62%, white);
+}
+
+.answer-btn.option-style-solid {
+  border-color: var(--option-bg);
+  color: var(--option-text);
+  background: var(--option-bg);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--option-bg) 28%, transparent);
 }
 
 .primary-btn {
@@ -3805,10 +3878,24 @@ select:focus {
 
 .answer-option-icon {
   min-width: 36px;
-  color: var(--theme);
+  color: var(--option-icon, var(--theme));
   font-size: 25px;
   font-style: normal;
   text-align: center;
+}
+
+.answer-option-icon.icon-style-badge,
+.answer-option-icon.icon-style-circle {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--option-icon, var(--theme)) 14%, white);
+}
+
+.answer-option-icon.icon-style-circle {
+  border-radius: 50%;
 }
 
 .answer-stack.option-layout-grid,

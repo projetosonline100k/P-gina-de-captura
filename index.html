@@ -53,7 +53,7 @@
       const STORAGE_KEY = "quizlab_quizzes_v3";
       const SUBMISSIONS_KEY = "quizlab_submissions_v1";
       const FUNNEL_KEY = "quizlab_funnel_v1";
-      const APP_BUILD_VERSION = "20260801-7";
+      const APP_BUILD_VERSION = "20260801-8";
       const SUPABASE_URL = "https://iofaapgqxixcvgxizjyu.supabase.co";
       const SUPABASE_KEY = "sb_publishable_3PLbdXuIHwBmQDA0gMbqdw_ZfBTT1a1";
 
@@ -2159,7 +2159,7 @@
               </section>
 
               <aside class="settings-panel">
-                ${selectedComponentSettingsMarkup(quiz, activeStage)}
+                ${selectedComponentSettingsMarkup(quiz, activeStage) || `<div class="settings-scroll"><div class="settings-group">${adminSettingsPanel(quiz, activeStage, link)}</div></div>`}
               </aside>
             </div>
         `;
@@ -3447,13 +3447,26 @@
               <span>Texto da pergunta</span>
               <input value="${escapeAttr(question.text)}" data-question="${qIndex}" data-qkey="text">
             </label>
+            <label class="field"><span>Formato das opções</span><select data-question="${qIndex}" data-qkey="optionTemplate">
+              ${[["simple", "Lista simples"], ["icons", "Lista com emojis"], ["large", "Botões grandes"], ["grid", "Grade em 2 colunas"], ["cards", "Cards visuais"], ["yes-no", "Sim / Não"], ["ranking", "Ranking"]].map(([value, label]) => `<option value="${value}" ${(question.optionTemplate || "simple") === value ? "selected" : ""}>${label}</option>`).join("")}
+            </select></label>
             <div class="option-list">
               ${question.options.map((option, oIndex) => `
-                <div class="option-editor">
-                  <input value="${escapeAttr(option.text)}" data-option="${qIndex}:${oIndex}" data-okey="text" aria-label="Texto da opcao">
-                  <input value="${escapeAttr(option.profile)}" data-option="${qIndex}:${oIndex}" data-okey="profile" aria-label="Perfil">
-                  <input type="number" min="0" value="${Number(option.weight || 1)}" data-option="${qIndex}:${oIndex}" data-okey="weight" aria-label="Peso">
-                  <button type="button" class="mini-btn" data-action="remove-option" data-q="${qIndex}" data-o="${oIndex}">x</button>
+                <div class="option-editor option-style-card">
+                  <div class="option-editor-head"><strong>Opção ${oIndex + 1}</strong><button type="button" class="mini-btn" data-action="remove-option" data-q="${qIndex}" data-o="${oIndex}">×</button></div>
+                  <label class="field"><span>Texto</span><input value="${escapeAttr(option.text)}" data-option="${qIndex}:${oIndex}" data-okey="text"></label>
+                  <div class="field-row option-emoji-row">
+                    <label class="field"><span>Emoji ou ícone</span><input class="emoji-input" value="${escapeAttr(option.icon || "")}" data-option="${qIndex}:${oIndex}" data-okey="icon" placeholder="Ex.: ⭐"></label>
+                    <label class="field"><span>Estilo do ícone</span><select data-option="${qIndex}:${oIndex}" data-okey="iconStyle"><option value="plain" ${(option.iconStyle || "plain") === "plain" ? "selected" : ""}>Simples</option><option value="badge" ${option.iconStyle === "badge" ? "selected" : ""}>Quadrado</option><option value="circle" ${option.iconStyle === "circle" ? "selected" : ""}>Círculo</option></select></label>
+                  </div>
+                  <label class="field"><span>Estilo da opção</span><select data-option="${qIndex}:${oIndex}" data-okey="style"><option value="default" ${(option.style || "default") === "default" ? "selected" : ""}>Padrão</option><option value="outline" ${option.style === "outline" ? "selected" : ""}>Contorno</option><option value="soft" ${option.style === "soft" ? "selected" : ""}>Fundo suave</option><option value="solid" ${option.style === "solid" ? "selected" : ""}>Fundo sólido</option></select></label>
+                  <div class="option-color-grid">
+                    <label class="field"><span>Emoji</span><input type="color" value="${escapeAttr(option.iconColor || "#5b3df5")}" data-option="${qIndex}:${oIndex}" data-okey="iconColor"></label>
+                    <label class="field"><span>Texto</span><input type="color" value="${escapeAttr(option.textColor || "#2e333a")}" data-option="${qIndex}:${oIndex}" data-okey="textColor"></label>
+                    <label class="field"><span>Fundo</span><input type="color" value="${escapeAttr(option.backgroundColor || "#f5f7fa")}" data-option="${qIndex}:${oIndex}" data-okey="backgroundColor"></label>
+                    <label class="field"><span>Borda</span><input type="color" value="${escapeAttr(option.borderColor || "#dce4ed")}" data-option="${qIndex}:${oIndex}" data-okey="borderColor"></label>
+                  </div>
+                  <details><summary>Resultado e pontuação</summary><label class="field"><span>Perfil</span><input value="${escapeAttr(option.profile)}" data-option="${qIndex}:${oIndex}" data-okey="profile"></label><label class="field"><span>Peso</span><input type="number" min="0" value="${Number(option.weight || 1)}" data-option="${qIndex}:${oIndex}" data-okey="weight"></label></details>
                 </div>
               `).join("")}
             </div>
@@ -3662,8 +3675,8 @@
               ${stageComponentsView(quiz, `question:${step}`, preview, 2)}
               <div class="answer-stack option-layout-${escapeAttr(question.optionTemplate || "simple")}" data-delay-target="question-options">
                 ${question.options.map((option, index) => `
-                  <button class="answer-btn answer-option-${index} ${answeredIndex === index ? "selected" : ""}" data-action="${preview ? "preview-answer" : "answer"}" data-answer="${index}">
-                    ${option.icon ? `<i class="answer-option-icon">${escapeHtml(option.icon)}</i>` : ""}
+                  <button class="answer-btn answer-option-${index} option-style-${escapeAttr(option.style || "default")} ${answeredIndex === index ? "selected" : ""}" style="--option-bg:${escapeAttr(option.backgroundColor || "#f5f7fa")};--option-text:${escapeAttr(option.textColor || "#2e333a")};--option-border:${escapeAttr(option.borderColor || "#dce4ed")};--option-icon:${escapeAttr(option.iconColor || "#5b3df5")}" data-action="${preview ? "preview-answer" : "answer"}" data-answer="${index}">
+                    ${option.icon ? `<i class="answer-option-icon icon-style-${escapeAttr(option.iconStyle || "plain")}">${escapeHtml(option.icon)}</i>` : ""}
                     <span contenteditable="${preview ? "true" : "false"}" data-map-option="${step}:${index}">${escapeHtml(option.text)}</span>
                     <b>→</b>
                   </button>
