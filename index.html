@@ -53,7 +53,7 @@
       const STORAGE_KEY = "quizlab_quizzes_v3";
       const SUBMISSIONS_KEY = "quizlab_submissions_v1";
       const FUNNEL_KEY = "quizlab_funnel_v1";
-      const APP_BUILD_VERSION = "20260728-3";
+      const APP_BUILD_VERSION = "20260801-7";
       const SUPABASE_URL = "https://iofaapgqxixcvgxizjyu.supabase.co";
       const SUPABASE_KEY = "sb_publishable_3PLbdXuIHwBmQDA0gMbqdw_ZfBTT1a1";
 
@@ -143,6 +143,10 @@
         flowDateTo: "",
         flowDatePreset: "all",
         checkoutButtonPicker: false,
+        homeQuizSearch: "",
+        homeQuizFilter: "all",
+        quizNameDialog: null,
+        quizNameDraft: "",
         adminResultIndex: 0,
         selectedComponentId: null,
         flowStage: "intro",
@@ -159,8 +163,12 @@
         unpublishedQuizIds: new Set(),
         priceTemplatePicker: false,
         textTemplatePicker: false,
+        optionTemplatePicker: false,
         previewDevice: "desktop",
-        pendingDeleteQuestionIndex: null
+        pendingDeleteQuestionIndex: null,
+        pendingDeleteStageKey: null,
+        pendingDeleteStageLabel: "",
+        pendingDeleteQuizId: null
       };
       let savedTextRange = null;
       let savedTextComponentId = null;
@@ -225,6 +233,8 @@
       }
 
       function saveQuizzes() {
+        const editingQuiz = state.quizzes.find((quiz) => quiz.id === state.activeId);
+        if (editingQuiz) editingQuiz.updatedAt = new Date().toISOString();
         const currentSnapshot = JSON.stringify(state.quizzes);
         if (!historyApplying && currentSnapshot !== lastQuizSnapshot) {
           historyPast.push(lastQuizSnapshot);
@@ -656,6 +666,10 @@
         if (!clean.results.length) clean.results = clone(defaultQuiz.results);
         clean.stageComponents = clean.stageComponents || {};
         clean.hiddenElements = clean.hiddenElements || {};
+        clean.blankStages = clean.blankStages || {};
+        clean.removedStages = Array.isArray(clean.removedStages) ? clean.removedStages : [];
+        clean.status = ["active", "paused", "draft", "archived"].includes(clean.status) ? clean.status : "active";
+        clean.updatedAt = clean.updatedAt || new Date().toISOString();
         clean.loadingDuration = Math.max(1, Math.min(300, Number(clean.loadingDuration) || 6));
         if (!Array.isArray(clean.flowConnections)) clean.flowConnections = [];
         Object.values(clean.stageComponents).flat().forEach((component) => {
@@ -666,6 +680,18 @@
           }
           if (component?.type === "Botão" && typeof component.countsAsCheckout !== "boolean") {
             component.countsAsCheckout = Boolean(component.url && component.url !== "#");
+          }
+          if (component?.type === "Botão") {
+            component.destination ||= "url";
+            component.backgroundColor ||= "#19a64f";
+            component.textColor ||= "#ffffff";
+            component.fontFamily ||= "Inter";
+            component.fontSize ||= "22";
+            component.fontWeight ||= "800";
+            component.borderRadius ||= "14";
+            component.buttonWidth ||= "100";
+            component.buttonAlign ||= "center";
+            component.effect ||= "shadow";
           }
           if (component?.type === "Preço" && component.template === "comparison") {
             if (typeof component.basicCountsAsCheckout !== "boolean") {
@@ -695,7 +721,7 @@
         const defaults = {
           "Vídeo": { content: "", label: "Cole aqui o link ou código de incorporação da Vturb" },
           "Imagem": { content: "", label: "Escolha uma imagem ou cole uma URL" },
-          "Botão": { content: "Quero continuar", url: "#", countsAsCheckout: true },
+          "Botão": { content: "Quero continuar", url: "#", destination: "url", countsAsCheckout: true, backgroundColor: "#19a64f", textColor: "#ffffff", fontFamily: "Inter", fontSize: "22", fontWeight: "800", borderRadius: "14", buttonWidth: "100", buttonAlign: "center", effect: "shadow" },
           "Texto": { content: "Digite seu texto", fontFamily: "Inter", fontSize: "28", fontWeight: "600", textAlign: "center", color: "#172033" },
           "Espaço": { content: "48" },
           "Timer": { content: "10", action: "show", targetIds: [], showCountdown: false, behaviorVersion: 2 },
@@ -762,6 +788,18 @@
         }
       };
 
+      const optionTemplates = {
+        simple: { name: "Lista simples", category: "Lista", layout: "simple", options: ["Opção 1", "Opção 2", "Opção 3", "Opção 4"] },
+        icons: { name: "Lista com ícones", category: "Lista", layout: "icons", icons: ["★", "♥", "✓", "⚡"], options: ["Opção 1", "Opção 2", "Opção 3", "Opção 4"] },
+        large: { name: "Botões grandes", category: "Lista", layout: "large", options: ["Opção 1", "Opção 2", "Opção 3", "Opção 4"] },
+        grid: { name: "Grade em 2 colunas", category: "Grade", layout: "grid", options: ["Opção 1", "Opção 2", "Opção 3", "Opção 4"] },
+        cards: { name: "Grade visual", category: "Com imagem", layout: "cards", icons: ["🏖️", "🏙️", "⛰️", "🎉"], options: ["Praia", "Cidade", "Natureza", "Diversão"] },
+        scale: { name: "Escala de nível", category: "Escala", layout: "scale", options: ["1  Iniciante", "2  Básico", "3  Intermediário", "4  Avançado", "5  Expert"] },
+        yesNo: { name: "Sim / Não", category: "Sim / Não", layout: "yes-no", icons: ["✓", "×"], options: ["Sim", "Não"] },
+        likert: { name: "Concordância", category: "Escala", layout: "likert", options: ["Concordo totalmente", "Concordo", "Neutro", "Discordo", "Discordo totalmente"] },
+        ranking: { name: "Ranking", category: "Personalizado", layout: "ranking", icons: ["☰", "☰", "☰", "☰"], options: ["Opção 1", "Opção 2", "Opção 3", "Opção 4"] }
+      };
+
       function addPriceTemplate(templateId) {
         const template = priceTemplates[templateId] || priceTemplates.simple;
         const quiz = activeQuiz();
@@ -794,7 +832,62 @@
           render();
           return;
         }
+        if (type === "Opções") {
+          state.optionTemplatePicker = true;
+          render();
+          return;
+        }
         addStageComponent(type);
+      }
+
+      function addOptionTemplate(templateId) {
+        const quiz = activeQuiz();
+        const key = stageKey(quiz);
+        const match = key.match(/^question:(\d+)$/);
+        if (!match) return;
+        const question = quiz.questions[Number(match[1])];
+        const template = optionTemplates[templateId] || optionTemplates.simple;
+        const profiles = ["travado", "organizando", "pronto"];
+        question.optionTemplate = template.layout;
+        question.options = template.options.map((text, index) => ({
+          text,
+          icon: template.icons?.[index] || "",
+          profile: profiles[index % profiles.length],
+          weight: 1
+        }));
+        state.optionTemplatePicker = false;
+        saveQuizzes();
+        render();
+      }
+
+      function optionTemplateModal() {
+        const key = stageKey(activeQuiz());
+        const canApply = /^question:\d+$/.test(key);
+        return `
+          <div class="price-template-backdrop">
+            <section class="price-template-modal option-template-modal" role="dialog" aria-modal="true" aria-label="Templates de opções">
+              <header>
+                <div><span>Componente</span><h2>Templates de Opções</h2><p>Escolha um modelo pronto para as respostas desta pergunta.</p></div>
+                <button type="button" data-action="close-option-templates" aria-label="Fechar">×</button>
+              </header>
+              <div class="price-template-filters"><span class="active">Todos</span><span>Lista</span><span>Com imagem</span><span>Grade</span><span>Escala</span><span>Sim / Não</span><span>Personalizado</span></div>
+              ${canApply ? "" : `<p class="option-template-warning">Abra uma etapa de pergunta para aplicar um template de opções.</p>`}
+              <div class="option-template-grid">
+                ${Object.entries(optionTemplates).map(([id, template]) => `
+                  <article class="price-template-option option-template-option">
+                    <strong>${escapeHtml(template.name)}</strong>
+                    <div class="option-template-preview layout-${escapeAttr(template.layout)}">
+                      ${template.options.map((text, index) => `<div><i>${escapeHtml(template.icons?.[index] || "○")}</i><span>${escapeHtml(text)}</span></div>`).join("")}
+                    </div>
+                    <small>${escapeHtml(template.category)}</small>
+                    <button type="button" data-action="choose-option-template" data-template="${id}" ${canApply ? "" : "disabled"}>Usar template</button>
+                  </article>
+                `).join("")}
+              </div>
+              <p class="option-template-tip">💡 Depois de inserir, você poderá editar cada alternativa normalmente.</p>
+            </section>
+          </div>
+        `;
       }
 
       function addTextTemplate(templateId) {
@@ -1017,7 +1110,8 @@
         const from = components.findIndex((item) => item.id === id);
         if (from < 0) return;
         const component = components[from];
-        component.position = Math.max(0, Math.min(4, Number(component.position ?? 4) + direction));
+        const positionKey = state.previewDevice === "mobile" ? "mobilePosition" : "position";
+        component[positionKey] = Math.max(0, Math.min(4, Number(component[positionKey] ?? component.position ?? 4) + direction));
         saveQuizzes();
         refreshAdminCanvas();
       }
@@ -1029,8 +1123,17 @@
         const from = components.findIndex((item) => item.id === draggedId);
         const to = components.findIndex((item) => item.id === targetId);
         if (from < 0 || to < 0) return;
-        const [component] = components.splice(from, 1);
-        components.splice(to, 0, component);
+        if (state.previewDevice === "mobile") {
+          const ordered = components.slice().sort((a, b) => Number(a.mobileOrder ?? components.indexOf(a)) - Number(b.mobileOrder ?? components.indexOf(b)));
+          const orderedFrom = ordered.findIndex((item) => item.id === draggedId);
+          const orderedTo = ordered.findIndex((item) => item.id === targetId);
+          const [component] = ordered.splice(orderedFrom, 1);
+          ordered.splice(orderedTo, 0, component);
+          ordered.forEach((item, index) => { item.mobileOrder = index; });
+        } else {
+          const [component] = components.splice(from, 1);
+          components.splice(to, 0, component);
+        }
         saveQuizzes();
         refreshAdminCanvas();
       }
@@ -1039,7 +1142,8 @@
         const quiz = activeQuiz();
         const component = (quiz.stageComponents?.[stageKey(quiz)] || []).find((item) => item.id === id);
         if (!component) return;
-        component.position = Math.max(0, Math.min(4, Number(position)));
+        const positionKey = state.previewDevice === "mobile" ? "mobilePosition" : "position";
+        component[positionKey] = Math.max(0, Math.min(4, Number(position)));
         saveQuizzes();
         render();
       }
@@ -1074,17 +1178,81 @@
         return slugify(quiz.slug || quiz.title || quiz.id);
       }
 
-      function addQuiz() {
-        const quiz = clone(defaultQuiz);
-        quiz.id = uid("quiz");
-        quiz.title = "Novo quiz inteligente";
-        quiz.slug = slugify(`novo-quiz-${quiz.id.slice(-6)}`);
+      function addQuiz(name) {
+        const cleanName = String(name || "").trim() || "Novo quiz";
+        const quiz = {
+          id: uid("quiz"),
+          title: cleanName,
+          slug: "",
+          subtitle: "",
+          badge: "",
+          ctaLabel: "Continuar",
+          leadTitle: "Antes de começar",
+          leadSubtitle: "Digite seu nome para continuar.",
+          purchaseUrl: "#",
+          theme: "#6438e8",
+          loadingDuration: 3,
+          status: "draft",
+          updatedAt: new Date().toISOString(),
+          questions: [{
+            text: "Digite sua primeira pergunta",
+            options: [
+              { text: "Opção 1", profile: "resultado", weight: 1 },
+              { text: "Opção 2", profile: "resultado", weight: 1 }
+            ]
+          }],
+          results: [{
+            profile: "resultado",
+            title: "Resultado principal",
+            text: "Escreva aqui a descrição do resultado.",
+            bullets: []
+          }],
+          stageComponents: {},
+          hiddenElements: {},
+          flowConnections: [],
+          flowDisconnected: [],
+          flowLayout: {},
+          blankStages: {},
+          removedStages: [],
+          manualStageCount: 0
+        };
+        quiz.slug = slugify(`${cleanName}-${quiz.id.slice(-6)}`);
         state.quizzes.unshift(quiz);
         state.activeId = quiz.id;
+        state.adminTab = "builder";
+        state.builderView = "flow";
         state.adminStage = 0;
         state.previewStep = 0;
+        state.selectedComponentId = null;
+        state.flowStage = "intro";
+        state.answers = [];
+        state.lead = { name: "", email: "", phone: "" };
+        state.priceTemplatePicker = false;
+        state.textTemplatePicker = false;
+        state.optionTemplatePicker = false;
         saveQuizzes();
         render();
+      }
+
+      function quizNameModal() {
+        if (!state.quizNameDialog) return "";
+        const isRename = state.quizNameDialog.mode === "rename";
+        return `
+          <div class="price-template-backdrop quiz-name-backdrop">
+            <section class="quiz-name-modal" role="dialog" aria-modal="true" aria-labelledby="quiz-name-title">
+              <div>
+                <p class="admin-kicker">${isRename ? "Editar quiz" : "Novo quiz"}</p>
+                <h2 id="quiz-name-title">${isRename ? "Renomear quiz" : "Como será o nome do quiz?"}</h2>
+                <p>${isRename ? "O novo nome aparecerá na sua lista de quizzes." : "Você poderá alterar esse nome depois."}</p>
+              </div>
+              <label class="field"><span>Nome do quiz</span><input maxlength="80" value="${escapeAttr(state.quizNameDraft)}" placeholder="Ex.: Perfil financeiro" data-quiz-name-input></label>
+              <div class="quiz-name-actions">
+                <button class="secondary-btn" type="button" data-action="cancel-quiz-name">Cancelar</button>
+                <button class="publish-btn" type="button" data-action="confirm-quiz-name">${isRename ? "Salvar nome" : "Criar quiz"}</button>
+              </div>
+            </section>
+          </div>
+        `;
       }
 
       function duplicateQuiz(id) {
@@ -1094,6 +1262,8 @@
         quiz.id = uid("quiz");
         quiz.title = source.title + " - copia";
         quiz.slug = slugify(`${slugFor(source)}-${quiz.id.slice(-6)}`);
+        quiz.status = "draft";
+        quiz.updatedAt = new Date().toISOString();
         state.quizzes.unshift(quiz);
         state.activeId = quiz.id;
         state.adminStage = 0;
@@ -1103,17 +1273,43 @@
 
       function removeQuiz(id) {
         if (state.quizzes.length === 1) return;
+        deleteRemoteQuizData(id);
         state.quizzes = state.quizzes.filter((quiz) => quiz.id !== id);
         state.activeId = state.quizzes[0].id;
+        state.pendingDeleteQuizId = null;
+        state.adminTab = "home";
         state.adminStage = 0;
         saveQuizzes();
         render();
       }
 
+      function deleteQuizModal() {
+        const targetQuiz = state.quizzes.find((quiz) => quiz.id === state.pendingDeleteQuizId);
+        if (!targetQuiz) return "";
+        return `
+          <div class="price-template-backdrop delete-confirm-backdrop">
+            <section class="delete-confirm-modal" role="dialog" aria-modal="true" aria-label="Confirmar exclusão do quiz">
+              <span class="delete-warning-icon">!</span>
+              <h2>Excluir “${escapeHtml(targetQuiz.title)}”?</h2>
+              <p>O quiz será removido da sua lista. Esta ação não poderá ser desfeita.</p>
+              <label class="field">
+                <span>Digite <strong>EXCLUIR</strong> para confirmar</span>
+                <input autocomplete="off" data-delete-quiz-input placeholder="EXCLUIR">
+              </label>
+              <div class="delete-confirm-actions">
+                <button type="button" class="secondary-btn" data-action="cancel-delete-quiz">Cancelar</button>
+                <button type="button" class="danger-btn" data-action="confirm-delete-quiz" disabled>Excluir quiz</button>
+              </div>
+            </section>
+          </div>
+        `;
+      }
+
       function addQuestion() {
         const quiz = activeQuiz();
         const newQuestionIndex = quiz.questions.length;
-        quiz.questions.push({
+        const manualFlow = quiz.manualStageCount != null;
+        quiz.questions.push(manualFlow ? { text: "", options: [] } : {
           text: "Nova pergunta",
           options: [
             { text: "Opcao A", profile: "planejador", weight: 1 },
@@ -1121,9 +1317,16 @@
           ]
         });
         quiz.flowDisconnected ||= [];
+        if (quiz.manualStageCount != null) quiz.manualStageCount += 1;
         const newStageKey = `question:${newQuestionIndex}`;
+        if (manualFlow) {
+          quiz.blankStages ||= {};
+          quiz.blankStages[newStageKey] = true;
+          quiz.stageComponents ||= {};
+          quiz.stageComponents[newStageKey] = [];
+        }
         if (!quiz.flowDisconnected.includes(newStageKey)) quiz.flowDisconnected.push(newStageKey);
-        state.adminStage = quiz.questions.length + 1;
+        state.adminStage = newQuestionIndex + 2;
         saveQuizzes();
         render();
       }
@@ -1180,6 +1383,47 @@
               <div class="delete-confirm-actions">
                 <button type="button" class="secondary-btn" data-action="cancel-delete-question">Cancelar</button>
                 <button type="button" class="danger-btn" data-action="confirm-delete-question" disabled>Excluir bloco</button>
+              </div>
+            </section>
+          </div>
+        `;
+      }
+
+      function requestDeleteStage(key, label) {
+        state.pendingDeleteStageKey = key;
+        state.pendingDeleteStageLabel = label || "Bloco";
+        render();
+      }
+
+      function removeStage(key) {
+        const quiz = activeQuiz();
+        quiz.removedStages ||= [];
+        if (!quiz.removedStages.includes(key)) quiz.removedStages.push(key);
+        quiz.flowConnections = (quiz.flowConnections || []).filter((connection) => connection.from !== key && connection.to !== key);
+        quiz.flowDisconnected = (quiz.flowDisconnected || []).filter((item) => item !== key);
+        if (quiz.stageComponents) delete quiz.stageComponents[key];
+        if (quiz.hiddenElements) delete quiz.hiddenElements[key];
+        if (quiz.blankStages) delete quiz.blankStages[key];
+        if (quiz.flowLayout) delete quiz.flowLayout[key];
+        state.pendingDeleteStageKey = null;
+        state.pendingDeleteStageLabel = "";
+        state.selectedComponentId = null;
+        saveQuizzes();
+        render();
+      }
+
+      function deleteStageModal() {
+        if (!state.pendingDeleteStageKey) return "";
+        return `
+          <div class="price-template-backdrop delete-confirm-backdrop">
+            <section class="delete-confirm-modal" role="dialog" aria-modal="true" aria-label="Confirmar exclusão do bloco">
+              <span class="delete-warning-icon">!</span>
+              <h2>Excluir ${escapeHtml(state.pendingDeleteStageLabel)}?</h2>
+              <p>O bloco, seus componentes e todas as conexões ligadas a ele serão removidos.</p>
+              <label class="field"><span>Digite <strong>EXCLUIR</strong> para confirmar</span><input autocomplete="off" data-delete-stage-input placeholder="EXCLUIR"></label>
+              <div class="delete-confirm-actions">
+                <button type="button" class="secondary-btn" data-action="cancel-delete-stage">Cancelar</button>
+                <button type="button" class="danger-btn" data-action="confirm-delete-stage" disabled>Excluir bloco</button>
               </div>
             </section>
           </div>
@@ -1527,8 +1771,7 @@
             const y1 = start.y;
             const x2 = end.x;
             const y2 = end.y;
-            const middle = (x1 + x2) / 2;
-            return `<path data-connection-from="${escapeAttr(connection.from)}" data-connection-option="${connection.option ?? ""}" d="M ${x1} ${y1} C ${middle} ${y1}, ${middle} ${y2}, ${x2} ${y2}"></path>`;
+            return `<path data-connection-from="${escapeAttr(connection.from)}" data-connection-option="${connection.option ?? ""}" d="M ${x1} ${y1} L ${x2} ${y2}"></path>`;
           }).join("");
           layer.querySelectorAll("[data-connection-from]").forEach((path) => {
             path.addEventListener("click", (event) => {
@@ -1565,15 +1808,7 @@
 
       function setPreviewDevice(device) {
         state.previewDevice = device === "mobile" ? "mobile" : "desktop";
-        const preview = document.querySelector(".canvas-preview");
-        if (preview) {
-          preview.classList.toggle("device-mobile", state.previewDevice === "mobile");
-          preview.classList.toggle("device-desktop", state.previewDevice === "desktop");
-        }
-        document.querySelectorAll("[data-action='set-preview-device']").forEach((button) => {
-          button.classList.toggle("active", button.dataset.device === state.previewDevice);
-        });
-        fitAdminCanvas();
+        render();
       }
 
       function refreshAdminCanvas() {
@@ -1595,14 +1830,7 @@
           element.addEventListener("click", (event) => {
             const action = element.dataset.action;
             if (action) event.preventDefault();
-            if (element.closest(".funnel-page-preview") && action?.startsWith("preview-")) {
-              return;
-            }
-            if (action === "preview-start") state.adminStage = Math.min(1, activeQuiz().questions.length);
-            if (action === "preview-name-next") state.adminStage = Math.min(2, activeQuiz().questions.length + 1);
-            if (action === "preview-answer") state.adminStage = Math.min(state.adminStage + 1, activeQuiz().questions.length + 2);
-            if (action === "preview-reset") state.adminStage = 0;
-            if (action === "preview-checkout-click") window.open(element.href, "_blank", "noopener");
+            if (action?.startsWith("preview-")) return;
             if (action === "select-custom-component") {
               const clickedEditableText = event.target.closest(".custom-text-content");
               if (!clickedEditableText && event.target.closest(".canvas-component-toolbar, .inline-video-editor, .inline-property-editor, .inline-timer-editor, input, textarea, select, [contenteditable='true']")) return;
@@ -1769,12 +1997,20 @@
       function flowBuilderCanvas(quiz, stageNames) {
         quiz.flowLayout ||= {};
         quiz.flowDisconnected ||= [];
-        ensureFlowConnections(quiz);
+        const manualFlow = quiz.manualStageCount != null;
+        const visibleStageCount = manualFlow
+          ? Math.max(0, Math.min(stageNames.length, Number(quiz.manualStageCount) || 0))
+          : stageNames.length;
+        const visibleStages = stageNames
+          .map((name, stage) => ({ name, stage, key: stageKey(quiz, stage) }))
+          .slice(0, visibleStageCount)
+          .filter((item) => !(quiz.removedStages || []).includes(item.key));
+        if (!manualFlow) ensureFlowConnections(quiz);
         return `
           <div class="flow-builder-workspace">
             <div class="funnel-map" data-funnel-map>
               <div class="funnel-map-hint">Conecte da saída à direita para a entrada à esquerda · clique em uma etapa para editar</div>
-              <button class="funnel-create-block" type="button" data-action="add-question">+ Criar novo bloco</button>
+              <button class="funnel-create-block" type="button" data-action="${manualFlow && visibleStageCount < stageNames.length ? "add-manual-stage" : "add-question"}">+ Criar novo bloco</button>
               <div class="funnel-map-controls">
                 <button data-action="map-zoom-out" title="Diminuir zoom">−</button>
                 <strong>${Math.round(state.mapZoom * 100)}%</strong>
@@ -1783,17 +2019,18 @@
               </div>
               <div class="funnel-node-track" style="--map-zoom:${state.mapZoom}">
                 <svg class="funnel-connection-layer" data-connection-layer aria-hidden="true"></svg>
-                ${stageNames.map((name, index) => `
-                  <div class="funnel-node-wrap" data-flow-node="${index}" style="left:${nodePosition(quiz, index).x}px;top:${nodePosition(quiz, index).y}px">
-                    <button class="flow-port flow-input-port" data-flow-input="${escapeAttr(stageKey(quiz, index))}" title="Entrada desta etapa"></button>
-                    <article class="funnel-node ${index === state.adminStage ? "active" : ""}" data-stage-drop="${index}" data-stage="${index}">
-                      <div class="funnel-node-head"><span>${index + 1}</span><strong>${escapeHtml(name)}</strong><div class="funnel-node-tools">${index > 1 && index <= quiz.questions.length + 1 ? `<button data-action="move-question-order" data-question="${index - 2}" data-direction="-1" title="Mover pergunta para trás">←</button><button data-action="move-question-order" data-question="${index - 2}" data-direction="1" title="Mover pergunta para frente">→</button><button data-action="duplicate-question-page" data-question="${index - 2}" title="Duplicar página">⧉</button>${quiz.questions.length > 1 ? `<button class="delete-flow-node" data-action="request-delete-question" data-question="${index - 2}" title="Excluir bloco">×</button>` : ""}` : ""}<button class="funnel-node-move-handle" title="Mover página">⠿</button></div></div>
-                      <div class="funnel-node-preview">${stageThumbnail(quiz, index)}</div>
-                      <div class="funnel-node-foot"><span>${(quiz.stageComponents?.[stageKey(quiz, index)] || []).length} componentes</span><button data-action="open-stage-editor" data-stage="${index}">Editar página</button></div>
+                ${visibleStages.map((item, displayIndex) => `
+                  <div class="funnel-node-wrap" data-flow-node="${item.stage}" style="left:${nodePosition(quiz, item.stage).x}px;top:${nodePosition(quiz, item.stage).y}px">
+                    <button class="flow-port flow-input-port" data-flow-input="${escapeAttr(item.key)}" title="Entrada desta etapa"></button>
+                    <article class="funnel-node ${item.stage === state.adminStage ? "active" : ""}" data-stage-drop="${item.stage}" data-stage="${item.stage}">
+                      <div class="funnel-node-head"><span>${displayIndex + 1}</span><strong>${escapeHtml(item.name)}</strong><div class="funnel-node-tools">${item.stage > 1 && item.stage <= quiz.questions.length + 1 ? `<button data-action="move-question-order" data-question="${item.stage - 2}" data-direction="-1" title="Mover pergunta para trás">←</button><button data-action="move-question-order" data-question="${item.stage - 2}" data-direction="1" title="Mover pergunta para frente">→</button><button data-action="duplicate-question-page" data-question="${item.stage - 2}" title="Duplicar página">⧉</button>` : ""}<button class="delete-flow-node" data-action="request-delete-stage" data-stage-key="${escapeAttr(item.key)}" data-stage-label="${escapeAttr(item.name)}" title="Excluir bloco">×</button><button class="funnel-node-move-handle" title="Mover página">⠿</button></div></div>
+                      <div class="funnel-node-preview">${stageThumbnail(quiz, item.stage)}</div>
+                      <div class="funnel-node-foot"><span>${(quiz.stageComponents?.[item.key] || []).length} componentes</span><button data-action="open-stage-editor" data-stage="${item.stage}">Editar página</button></div>
                     </article>
-                    <div class="flow-output-ports">${stageOutputPorts(quiz, index)}</div>
+                    <div class="flow-output-ports">${stageOutputPorts(quiz, item.stage)}</div>
                   </div>
                 `).join("")}
+                ${visibleStages.length ? "" : `<div class="empty-flow-canvas"><span>＋</span><strong>Seu fluxo está vazio</strong><p>Clique em “Criar novo bloco” para começar.</p></div>`}
               </div>
             </div>
           </div>
@@ -1801,7 +2038,7 @@
       }
 
       function ensureFlowConnections(quiz) {
-        const keys = ["intro", "name", ...quiz.questions.map((_, index) => `question:${index}`), "loading", "result"];
+        const keys = ["intro", "name", ...quiz.questions.map((_, index) => `question:${index}`), "loading", "result"].filter((key) => !(quiz.removedStages || []).includes(key));
         if (!Array.isArray(quiz.flowConnections)) quiz.flowConnections = [];
         if (!quiz.flowConnections.length) {
           quiz.flowConnections = keys.slice(0, -1).flatMap((from, index) => {
@@ -1882,8 +2119,10 @@
       }
 
       function stageThumbnail(quiz, stage) {
+        const key = stageKey(quiz, stage);
         let page = "";
-        if (stage === 0) page = introView(quiz, true);
+        if (quiz.blankStages?.[key]) page = blankStageView(quiz, key, true);
+        else if (stage === 0) page = introView(quiz, true);
         else if (stage === 1) page = nameView(quiz, true);
         else if (stage > 1 && stage <= quiz.questions.length + 1) page = questionView(quiz, stage - 2, true);
         else if (stage === quiz.questions.length + 2) page = loadingView(quiz, true);
@@ -1908,10 +2147,6 @@
               </aside>
 
               <section class="canvas-area">
-                <div class="canvas-brand">
-                  <span>IN</span>
-                  <strong>inlead</strong>
-                </div>
                 <div class="canvas-progress"><span></span></div>
 
                 <div class="canvas-preview device-${state.previewDevice}">
@@ -1932,40 +2167,39 @@
 
       function adminShell(quiz, link, content) {
         const hasChanges = state.unpublishedQuizIds.has(quiz.id);
+        const libraryMode = state.adminTab === "home";
         return `
           <main class="admin-builder">
             <header class="builder-topbar">
               <div class="builder-history">
-                <button aria-label="Voltar">‹</button>
-                <button data-action="undo-editor" aria-label="Desfazer" title="Desfazer (Ctrl/Cmd + Z)" ${historyPast.length ? "" : "disabled"}>↶</button>
-                <button data-action="redo-editor" aria-label="Refazer" title="Refazer (Ctrl/Cmd + Shift + Z)" ${historyFuture.length ? "" : "disabled"}>↷</button>
+                ${libraryMode ? `<strong class="library-brand">QuizLab</strong>` : `<button data-action="select-admin-tab" data-tab="home" aria-label="Voltar para meus quizzes">‹</button><button data-action="undo-editor" aria-label="Desfazer" title="Desfazer (Ctrl/Cmd + Z)" ${historyPast.length ? "" : "disabled"}>↶</button><button data-action="redo-editor" aria-label="Refazer" title="Refazer (Ctrl/Cmd + Shift + Z)" ${historyFuture.length ? "" : "disabled"}>↷</button>`}
               </div>
 
               <nav class="builder-tabs" aria-label="Seções do editor">
                 <button class="${state.adminTab === "home" ? "active" : ""}" data-action="select-admin-tab" data-tab="home">⌂ Home</button>
-                <button class="${state.adminTab === "builder" ? "active" : ""}" data-action="select-admin-tab" data-tab="builder">▦ Construtor</button>
-                <button class="${state.adminTab === "flow" ? "active" : ""}" data-action="select-admin-tab" data-tab="flow">⌘ Fluxo</button>
-                <button class="${state.adminTab === "design" ? "active" : ""}" data-action="select-admin-tab" data-tab="design">◇ Design</button>
-                <button class="${state.adminTab === "leads" ? "active" : ""}" data-action="select-admin-tab" data-tab="leads">♙ Leads</button>
-                <button class="${state.adminTab === "settings" ? "active" : ""}" data-action="select-admin-tab" data-tab="settings">⚙ Configurações</button>
+                ${libraryMode ? "" : `<button class="${state.adminTab === "builder" ? "active" : ""}" data-action="select-admin-tab" data-tab="builder">▦ Construtor</button><button class="${state.adminTab === "flow" ? "active" : ""}" data-action="select-admin-tab" data-tab="flow">⌘ Fluxo</button><button class="${state.adminTab === "design" ? "active" : ""}" data-action="select-admin-tab" data-tab="design">◇ Design</button><button class="${state.adminTab === "leads" ? "active" : ""}" data-action="select-admin-tab" data-tab="leads">♙ Leads</button><button class="${state.adminTab === "settings" ? "active" : ""}" data-action="select-admin-tab" data-tab="settings">⚙ Configurações</button>`}
               </nav>
 
               <div class="builder-actions">
-                <div class="device-switcher" aria-label="Modo de visualização">
+                ${libraryMode ? "" : `<div class="device-switcher" aria-label="Modo de visualização">
                   <button class="tool-icon ${state.previewDevice === "desktop" ? "active" : ""}" type="button" data-action="set-preview-device" data-device="desktop" aria-label="Visualizar no computador" title="Computador">▰</button>
                   <button class="tool-icon ${state.previewDevice === "mobile" ? "active" : ""}" type="button" data-action="set-preview-device" data-device="mobile" aria-label="Visualizar no celular" title="Celular">▯</button>
                 </div>
                 <button class="tool-icon" aria-label="Compartilhar" data-action="copy-link">⌘</button>
                 <a class="preview-btn" href="${escapeAttr(previewUrl())}" target="_blank" rel="noopener">▷ Ver prévia</a>
                 <button class="save-btn" data-action="save-quiz">Salvar rascunho</button>
-                <button class="publish-btn ${hasChanges ? "has-changes" : ""}" data-action="publish-quiz">${hasChanges ? "Publicar alterações" : "Publicar"}</button>
+                <button class="publish-btn ${hasChanges ? "has-changes" : ""}" data-action="publish-quiz">${hasChanges ? "Publicar alterações" : "Publicar"}</button>`}
               </div>
             </header>
             ${remoteStatusView()}
             ${content}
             ${state.priceTemplatePicker ? priceTemplateModal() : ""}
             ${state.textTemplatePicker ? textTemplateModal() : ""}
+            ${state.optionTemplatePicker ? optionTemplateModal() : ""}
             ${deleteQuestionModal()}
+            ${deleteStageModal()}
+            ${quizNameModal()}
+            ${deleteQuizModal()}
           </main>
         `;
       }
@@ -1980,6 +2214,10 @@
 
       function adminCanvasPreview(quiz) {
         const stage = Math.min(state.adminStage, quiz.questions.length + 3);
+        const key = stageKey(quiz, stage);
+        if (quiz.blankStages?.[key]) {
+          return `<div class="canvas-live-page public-shell">${blankStageView(quiz, key, true)}</div>`;
+        }
         if (stage === 1) {
           return `<div class="canvas-live-page public-shell">${nameView(quiz, true)}</div>`;
         }
@@ -2140,7 +2378,9 @@
       }
 
       function textComponentEditor(component) {
-        const font = component.fontFamily || "Inter";
+        const value = (key, fallback) => responsiveComponentValue(component, key, fallback);
+        const key = (name) => responsiveComponentKey(name);
+        const font = value("fontFamily", "Inter");
         const tag = ["h1", "h2", "h3", "p", "blockquote", "span", "div"].includes(component.tag) ? component.tag : "p";
         return `
           <div class="text-style-editor">
@@ -2148,7 +2388,8 @@
             <label class="field"><span>Tag</span><select data-stage-component="${component.id}" data-component-key="tag">
               ${[["h1", "H1 — Título principal"], ["h2", "H2 — Título"], ["h3", "H3 — Subtítulo"], ["p", "P — Parágrafo"], ["blockquote", "Citação"], ["span", "Texto curto"], ["div", "Bloco de texto/lista"]].map(([value, label]) => `<option value="${value}" ${tag === value ? "selected" : ""}>${label}</option>`).join("")}
             </select></label>
-            <label class="field"><span>Fonte</span><select data-stage-component="${component.id}" data-component-key="fontFamily">
+            <div class="device-specific-note"><strong>${state.previewDevice === "mobile" ? "Celular" : "Computador"}</strong><span>Tipografia independente para este dispositivo.</span></div>
+            <label class="field"><span>Fonte</span><select data-stage-component="${component.id}" data-component-key="${key("fontFamily")}">
               <option value="Inter" ${font === "Inter" ? "selected" : ""}>Inter</option>
               <option value="Playfair Display" ${font === "Playfair Display" ? "selected" : ""}>Playfair Display</option>
               <option value="Georgia" ${font === "Georgia" ? "selected" : ""}>Georgia</option>
@@ -2156,19 +2397,16 @@
               <option value="system-ui" ${font === "system-ui" ? "selected" : ""}>Fonte do sistema</option>
             </select></label>
             <div class="field-row">
-              <label class="field"><span>Tamanho</span><input type="number" min="10" max="120" value="${escapeAttr(component.fontSize || "28")}" data-stage-component="${component.id}" data-component-key="fontSize"></label>
-              <label class="field"><span>Peso</span><select data-stage-component="${component.id}" data-component-key="fontWeight">
-                ${[["400", "Normal"], ["500", "Médio"], ["600", "Seminegrito"], ["700", "Negrito"], ["800", "Extra negrito"], ["900", "Máximo"]].map(([value, label]) => `<option value="${value}" ${(component.fontWeight || "600") === value ? "selected" : ""}>${label}</option>`).join("")}
+              <label class="field"><span>Tamanho</span><input type="number" min="10" max="120" value="${escapeAttr(value("fontSize", "28"))}" data-stage-component="${component.id}" data-component-key="${key("fontSize")}"></label>
+              <label class="field"><span>Peso</span><select data-stage-component="${component.id}" data-component-key="${key("fontWeight")}">
+                ${[["400", "Normal"], ["500", "Médio"], ["600", "Seminegrito"], ["700", "Negrito"], ["800", "Extra negrito"], ["900", "Máximo"]].map(([optionValue, label]) => `<option value="${optionValue}" ${value("fontWeight", "600") === optionValue ? "selected" : ""}>${label}</option>`).join("")}
               </select></label>
             </div>
             <div class="field-row">
-              <label class="field"><span>Alinhamento</span><select data-stage-component="${component.id}" data-component-key="textAlign">
-                <option value="left" ${component.textAlign === "left" ? "selected" : ""}>Esquerda</option>
-                <option value="center" ${(component.textAlign || "center") === "center" ? "selected" : ""}>Centro</option>
-                <option value="right" ${component.textAlign === "right" ? "selected" : ""}>Direita</option>
-                <option value="justify" ${component.textAlign === "justify" ? "selected" : ""}>Justificado</option>
+              <label class="field"><span>Alinhamento</span><select data-stage-component="${component.id}" data-component-key="${key("textAlign")}">
+                ${[["left", "Esquerda"], ["center", "Centro"], ["right", "Direita"], ["justify", "Justificado"]].map(([optionValue, label]) => `<option value="${optionValue}" ${value("textAlign", "center") === optionValue ? "selected" : ""}>${label}</option>`).join("")}
               </select></label>
-              <label class="field"><span>Cor</span><input type="color" value="${escapeAttr(component.color || "#172033")}" data-stage-component="${component.id}" data-component-key="color"></label>
+              <label class="field"><span>Cor</span><input type="color" value="${escapeAttr(value("color", "#172033"))}" data-stage-component="${component.id}" data-component-key="${key("color")}"></label>
             </div>
             <div class="field-row">
               <label class="field"><span>Altura da linha</span><input type="number" min="0.8" max="3" step="0.05" value="${escapeAttr(component.lineHeight || "1.25")}" data-stage-component="${component.id}" data-component-key="lineHeight"></label>
@@ -2197,7 +2435,7 @@
                 <strong>${escapeHtml(selected.type)}</strong>
                 <button type="button" class="text-btn" data-action="remove-stage-component" data-component-id="${selected.id}">Remover</button>
               </div>
-              ${selected.type === "Preço" ? priceComponentEditor(selected) : selected.type === "Texto" ? textComponentEditor(selected) : selected.type === "Imagem" ? `
+              ${selected.type === "Preço" ? priceComponentEditor(selected) : selected.type === "Texto" ? textComponentEditor(selected) : selected.type === "Botão" ? buttonComponentEditor(quiz, selected) : selected.type === "Imagem" ? `
                 ${imageUploadControls(selected)}
                 <label class="field">
                   <span>Ou use uma URL da imagem</span>
@@ -2207,9 +2445,71 @@
                 <span>${selected.type === "Vídeo" ? "Link ou código embed da Vturb" : selected.type === "Imagem" ? "URL da imagem" : "Conteúdo"}</span>
                 <textarea rows="5" placeholder="${escapeAttr(selected.label || "Digite o conteúdo")}" data-stage-component="${selected.id}" data-component-key="content">${escapeHtml(selected.content || "")}</textarea>
               </label>`}
-              ${selected.type === "Botão" ? `<label class="field"><span>Link do botão</span><input value="${escapeAttr(selected.url || "#")}" data-stage-component="${selected.id}" data-component-key="url"></label>` : ""}
               ${selected.type === "Vídeo" ? `<label class="field"><span>Formato</span><select data-stage-component="${selected.id}" data-component-key="aspectRatio"><option value="16:9" ${selected.aspectRatio !== "9:16" ? "selected" : ""}>Horizontal 16:9</option><option value="9:16" ${selected.aspectRatio === "9:16" ? "selected" : ""}>Reels 9:16</option></select></label>` : ""}
             </article>
+          </div>
+        `;
+      }
+
+      function buttonDestinationOptions(quiz, selectedValue) {
+        const stages = [
+          ["intro", "Bloco 1 · Boas-vindas"],
+          ["name", "Bloco 2 · Nome"],
+          ...quiz.questions.map((_, index) => [`question:${index}`, `Bloco ${index + 3} · Pergunta ${index + 1}`]),
+          ["loading", `Bloco ${quiz.questions.length + 3} · Loading`],
+          ["result", `Bloco ${quiz.questions.length + 4} · Resultado`]
+        ];
+        return stages.map(([value, label]) => `<option value="${escapeAttr(value)}" ${selectedValue === value ? "selected" : ""}>${escapeHtml(label)}</option>`).join("");
+      }
+
+      function responsiveComponentKey(key) {
+        return state.previewDevice === "mobile" ? `mobile${key.charAt(0).toUpperCase()}${key.slice(1)}` : key;
+      }
+
+      function responsiveComponentValue(component, key, fallback = "") {
+        const responsiveKey = responsiveComponentKey(key);
+        return component[responsiveKey] ?? component[key] ?? fallback;
+      }
+
+      function buttonComponentEditor(quiz, component) {
+        const destination = component.destination || "url";
+        const visual = (key, fallback) => responsiveComponentValue(component, key, fallback);
+        const visualKey = (key) => responsiveComponentKey(key);
+        return `
+          <div class="button-component-editor">
+            <label class="field"><span>Texto do botão</span><input value="${escapeAttr(component.content || "Quero continuar")}" data-stage-component="${component.id}" data-component-key="content"></label>
+            <label class="field"><span>Ao clicar, ir para</span><select data-stage-component="${component.id}" data-component-key="destination">
+              <option value="url" ${destination === "url" ? "selected" : ""}>Link externo</option>
+              ${buttonDestinationOptions(quiz, destination)}
+            </select></label>
+            ${destination === "url" ? `<label class="field"><span>Link do botão</span><input type="url" placeholder="https://..." value="${escapeAttr(component.url || "")}" data-stage-component="${component.id}" data-component-key="url"></label>` : `<p class="button-destination-note">No quiz publicado, este botão levará diretamente para ${escapeHtml(destination)}.</p>`}
+            <div class="device-specific-note"><strong>${state.previewDevice === "mobile" ? "Celular" : "Computador"}</strong><span>Estas alterações valem somente para este dispositivo.</span></div>
+            <h4 class="component-editor-subtitle">Aparência</h4>
+            <div class="field-row">
+              <label class="field"><span>Cor do botão</span><input type="color" value="${escapeAttr(visual("backgroundColor", "#19a64f"))}" data-stage-component="${component.id}" data-component-key="${visualKey("backgroundColor")}"></label>
+              <label class="field"><span>Cor do texto</span><input type="color" value="${escapeAttr(visual("textColor", "#ffffff"))}" data-stage-component="${component.id}" data-component-key="${visualKey("textColor")}"></label>
+            </div>
+            <label class="field"><span>Fonte</span><select data-stage-component="${component.id}" data-component-key="${visualKey("fontFamily")}">
+              ${["Inter", "Playfair Display", "Georgia", "Arial", "system-ui"].map((font) => `<option value="${font}" ${visual("fontFamily", "Inter") === font ? "selected" : ""}>${font}</option>`).join("")}
+            </select></label>
+            <div class="field-row">
+              <label class="field"><span>Tamanho</span><input type="number" min="12" max="60" value="${escapeAttr(visual("fontSize", "22"))}" data-stage-component="${component.id}" data-component-key="${visualKey("fontSize")}"></label>
+              <label class="field"><span>Peso</span><select data-stage-component="${component.id}" data-component-key="${visualKey("fontWeight")}">
+                ${[["400", "Normal"], ["600", "Seminegrito"], ["700", "Negrito"], ["800", "Extra negrito"], ["900", "Máximo"]].map(([value, label]) => `<option value="${value}" ${visual("fontWeight", "800") === value ? "selected" : ""}>${label}</option>`).join("")}
+              </select></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>Cantos arredondados</span><input type="number" min="0" max="60" value="${escapeAttr(visual("borderRadius", "14"))}" data-stage-component="${component.id}" data-component-key="${visualKey("borderRadius")}"></label>
+              <label class="field"><span>Largura (%)</span><input type="number" min="20" max="100" value="${escapeAttr(visual("buttonWidth", "100"))}" data-stage-component="${component.id}" data-component-key="${visualKey("buttonWidth")}"></label>
+            </div>
+            <div class="field-row">
+              <label class="field"><span>Alinhamento</span><select data-stage-component="${component.id}" data-component-key="${visualKey("buttonAlign")}">
+                <option value="left" ${visual("buttonAlign", "center") === "left" ? "selected" : ""}>Esquerda</option><option value="center" ${visual("buttonAlign", "center") === "center" ? "selected" : ""}>Centro</option><option value="right" ${visual("buttonAlign", "center") === "right" ? "selected" : ""}>Direita</option>
+              </select></label>
+              <label class="field"><span>Efeito</span><select data-stage-component="${component.id}" data-component-key="${visualKey("effect")}">
+                ${[["none", "Nenhum"], ["shadow", "Sombra"], ["glow", "Brilho"], ["pulse", "Pulsar"], ["lift", "Elevar ao passar"]].map(([value, label]) => `<option value="${value}" ${visual("effect", "shadow") === value ? "selected" : ""}>${label}</option>`).join("")}
+              </select></label>
+            </div>
           </div>
         `;
       }
@@ -2248,6 +2548,9 @@
             saveQuizzes();
             refreshAdminCanvas();
           });
+          if (input.dataset.componentKey === "destination") {
+            input.addEventListener("change", () => render());
+          }
         });
         root.querySelectorAll("[data-timer-target]").forEach((input) => {
           input.addEventListener("change", () => {
@@ -2460,7 +2763,11 @@
       }
 
       function stageComponentsView(quiz, key, preview, position = 4) {
-        const components = (quiz.stageComponents?.[key] || []).filter((component) => Number(component.position ?? 4) === position);
+        const allComponents = quiz.stageComponents?.[key] || [];
+        const mobileMode = preview ? state.previewDevice === "mobile" : window.matchMedia("(max-width: 680px)").matches;
+        const components = allComponents
+          .filter((component) => Number(mobileMode ? (component.mobilePosition ?? component.position ?? 4) : (component.position ?? 4)) === position)
+          .sort((a, b) => mobileMode ? Number(a.mobileOrder ?? allComponents.indexOf(a)) - Number(b.mobileOrder ?? allComponents.indexOf(b)) : allComponents.indexOf(a) - allComponents.indexOf(b));
         if (!components.length && !preview) return "";
         const dropData = preview ? ` data-component-position="${position}"` : "";
         return `<div class="custom-components ${components.length ? "" : "empty-component-position"}"${dropData}>${components.map((component) => componentView(component, preview)).join("")}</div>`;
@@ -2576,9 +2883,12 @@
         }
         if (component.type === "Preço") return `<div class="custom-component price-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${priceCardMarkup(component, preview)}</div>`;
         if (component.type === "Texto") {
-          const fontSize = Math.max(10, Math.min(120, Number(component.fontSize) || 28));
-          const weight = ["400", "500", "600", "700", "800", "900"].includes(String(component.fontWeight)) ? component.fontWeight : "600";
-          const align = ["left", "center", "right", "justify"].includes(component.textAlign) ? component.textAlign : "center";
+          const mobileMode = preview && state.previewDevice === "mobile";
+          const current = (key, fallback) => mobileMode ? (component[`mobile${key.charAt(0).toUpperCase()}${key.slice(1)}`] ?? component[key] ?? fallback) : (component[key] ?? fallback);
+          const mobile = (key, fallback) => component[`mobile${key.charAt(0).toUpperCase()}${key.slice(1)}`] ?? component[key] ?? fallback;
+          const fontSize = Math.max(10, Math.min(120, Number(current("fontSize", 28))));
+          const weight = ["400", "500", "600", "700", "800", "900"].includes(String(current("fontWeight", "600"))) ? current("fontWeight", "600") : "600";
+          const align = ["left", "center", "right", "justify"].includes(current("textAlign", "center")) ? current("textAlign", "center") : "center";
           const tag = ["h1", "h2", "h3", "p", "blockquote", "span", "div"].includes(component.tag) ? component.tag : "p";
           const lineHeight = Math.max(0.8, Math.min(3, Number(component.lineHeight) || 1.25));
           const letterSpacing = Math.max(-5, Math.min(20, Number(component.letterSpacing) || 0));
@@ -2587,13 +2897,29 @@
           const maxWidth = Math.max(20, Math.min(100, Number(component.maxWidth) || 100));
           const accentClass = component.accent ? " text-accent" : "";
           const textContent = component.richHtml ? sanitizeRichText(component.richHtml) : escapeHtml(component.content || "Digite seu texto");
-          return `<div class="custom-component text-component${accentClass}${selected}" style="margin-top:${marginTop}px;margin-bottom:${marginBottom}px"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<${tag} class="custom-text-content" style="font-family:${escapeAttr(componentFontFamily(component.fontFamily))};font-size:${fontSize}px;font-weight:${weight};text-align:${align};color:${escapeAttr(component.color || "#172033")};line-height:${lineHeight};letter-spacing:${letterSpacing}px;max-width:${maxWidth}%" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${textContent}</${tag}></div>`;
+          const responsiveStyle = `--mobile-text-font:${escapeAttr(componentFontFamily(mobile("fontFamily", "Inter")))};--mobile-text-size:${Math.max(10, Math.min(120, Number(mobile("fontSize", 28))))}px;--mobile-text-weight:${escapeAttr(mobile("fontWeight", "600"))};--mobile-text-align:${escapeAttr(mobile("textAlign", "center"))};--mobile-text-color:${escapeAttr(mobile("color", "#172033"))}`;
+          return `<div class="custom-component text-component${accentClass}${selected}" style="margin-top:${marginTop}px;margin-bottom:${marginBottom}px"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<${tag} class="custom-text-content" style="font-family:${escapeAttr(componentFontFamily(current("fontFamily", "Inter")))};font-size:${fontSize}px;font-weight:${weight};text-align:${align};color:${escapeAttr(current("color", "#172033"))};line-height:${lineHeight};letter-spacing:${letterSpacing}px;max-width:${maxWidth}%;${responsiveStyle}" contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${textContent}</${tag}></div>`;
         }
         if (component.type === "Imagem") return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${component.content ? `<img class="custom-image" src="${escapeAttr(component.content)}" alt="">` : `<div class="component-placeholder">Imagem</div>`}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor image-inline-editor">${imageUploadControls(component, true)}<input value="${escapeAttr(component.content?.startsWith("data:") ? "" : (component.content || ""))}" placeholder="Ou cole a URL da imagem" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
         if (component.type === "Botão") {
-          const checkoutAction = !preview && component.countsAsCheckout ? ` data-action="checkout-click"` : "";
-          const linkBehavior = !preview ? ` target="_blank" rel="noopener"` : "";
-          return `<div class="custom-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<a class="diagnostic-btn custom-button" href="${escapeAttr(component.url || "#")}"${checkoutAction}${linkBehavior} contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Botão")}</a>${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input value="${escapeAttr(component.url || "")}" placeholder="Link do botão" data-inline-component="${component.id}" data-component-key="url"></div>` : ""}</div>`;
+          const destination = component.destination || "url";
+          const isInternal = destination !== "url";
+          const action = preview ? "" : isInternal ? ` data-action="custom-button-go" data-destination="${escapeAttr(destination)}"` : component.countsAsCheckout ? ` data-action="checkout-click"` : "";
+          const linkBehavior = !preview && !isInternal ? ` target="_blank" rel="noopener"` : "";
+          const mobileMode = preview && state.previewDevice === "mobile";
+          const current = (key, fallback) => mobileMode ? (component[`mobile${key.charAt(0).toUpperCase()}${key.slice(1)}`] ?? component[key] ?? fallback) : (component[key] ?? fallback);
+          const mobile = (key, fallback) => component[`mobile${key.charAt(0).toUpperCase()}${key.slice(1)}`] ?? component[key] ?? fallback;
+          const fontSize = Math.max(12, Math.min(60, Number(current("fontSize", 22))));
+          const radius = Math.max(0, Math.min(60, Number(current("borderRadius", 14))));
+          const width = Math.max(20, Math.min(100, Number(current("buttonWidth", 100))));
+          const align = ["left", "center", "right"].includes(current("buttonAlign", "center")) ? current("buttonAlign", "center") : "center";
+          const margin = align === "left" ? "0 auto 0 0" : align === "right" ? "0 0 0 auto" : "0 auto";
+          const effect = ["none", "shadow", "glow", "pulse", "lift"].includes(current("effect", "shadow")) ? current("effect", "shadow") : "shadow";
+          const mobileEffect = ["none", "shadow", "glow", "pulse", "lift"].includes(mobile("effect", "shadow")) ? mobile("effect", "shadow") : "shadow";
+          const mobileAlign = mobile("buttonAlign", "center");
+          const mobileMargin = mobileAlign === "left" ? "0 auto 0 0" : mobileAlign === "right" ? "0 0 0 auto" : "0 auto";
+          const style = `background:${escapeAttr(current("backgroundColor", "#19a64f"))};color:${escapeAttr(current("textColor", "#ffffff"))};font-family:${escapeAttr(componentFontFamily(current("fontFamily", "Inter")))};font-size:${fontSize}px;font-weight:${escapeAttr(current("fontWeight", "800"))};border-radius:${radius}px;width:${width}%;margin:${margin};--mobile-button-bg:${escapeAttr(mobile("backgroundColor", "#19a64f"))};--mobile-button-color:${escapeAttr(mobile("textColor", "#ffffff"))};--mobile-button-font:${escapeAttr(componentFontFamily(mobile("fontFamily", "Inter")))};--mobile-button-size:${Math.max(12, Math.min(60, Number(mobile("fontSize", 22))))}px;--mobile-button-weight:${escapeAttr(mobile("fontWeight", "800"))};--mobile-button-radius:${Math.max(0, Math.min(60, Number(mobile("borderRadius", 14))))}px;--mobile-button-width:${Math.max(20, Math.min(100, Number(mobile("buttonWidth", 100))))}%;--mobile-button-margin:${mobileMargin}`;
+          return `<div class="custom-component button-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<a class="diagnostic-btn custom-button button-effect-${effect} mobile-button-effect-${mobileEffect}" style="${style}" href="${escapeAttr(isInternal ? "#" : (component.url || "#"))}"${action}${linkBehavior}>${escapeHtml(component.content || "Botão")}</a></div>`;
         }
         if (component.type === "Espaço") return `<div class="custom-component spacer-component${selected}" style="height:${Math.max(8, Number(component.content) || 48)}px"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${preview && state.selectedComponentId === component.id ? `<div class="inline-property-editor"><input type="number" min="8" value="${escapeAttr(component.content || "48")}" aria-label="Altura do espaço" data-inline-component="${component.id}" data-component-key="content"></div>` : ""}</div>`;
         return `<div class="custom-component generic-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<strong>${escapeHtml(component.type)}</strong><p contenteditable="${preview ? "true" : "false"}" data-inline-component="${component.id}" data-component-key="content">${escapeHtml(component.content || "Clique para editar")}</p></div>`;
@@ -2622,38 +2948,90 @@
       }
 
       function homeView(quiz) {
-        const submissions = quizSubmissions(quiz);
-        const total = submissions.length;
-        const resultCounts = countBy(submissions, "resultProfile");
-        const topResult = Object.entries(resultCounts).sort((a, b) => b[1] - a[1])[0];
-        const completionRate = total ? "100%" : "0%";
+        const allQuizzes = state.quizzes.slice();
+        const totalResponses = state.submissions.filter((item) => !isTestName(item.travelerName) && item.resultProfile !== "__quiz_definition__").length;
+        const activeCount = allQuizzes.filter((item) => item.status === "active").length;
+        const pausedCount = allQuizzes.filter((item) => item.status === "paused").length;
+        const query = normalizeName(state.homeQuizSearch);
+        const visibleQuizzes = allQuizzes.filter((item) => {
+          const matchesSearch = !query || normalizeName(`${item.title} ${item.subtitle} ${slugFor(item)}`).includes(query);
+          const matchesFilter = state.homeQuizFilter === "all" || item.status === state.homeQuizFilter;
+          return matchesSearch && matchesFilter;
+        });
+        const statusMeta = {
+          active: ["Ativo", "green"],
+          paused: ["Pausado", "amber"],
+          draft: ["Rascunho", "gray"],
+          archived: ["Arquivado", "gray"]
+        };
+        const quizStats = (item) => {
+          const submissions = quizSubmissions(item);
+          const records = state.funnel.filter((record) => record.quizId === item.id && record.stage !== "checkout-click");
+          const resultRank = item.questions.length + 4;
+          const completed = records.filter((record) => Number(record.maxRank || 0) >= resultRank).length;
+          return {
+            responses: submissions.length,
+            completion: records.length ? Math.round((completed / records.length) * 100) : 0
+          };
+        };
         return `
-          <section class="admin-page">
-            <div class="admin-page-head">
+          <section class="admin-page quiz-library">
+            <div class="quiz-library-head">
               <div>
-                <p class="admin-kicker">Home</p>
-                <h1>Resumo do quiz</h1>
+                <h1>Meus quizzes</h1>
+                <p>Gerencie todos os seus quizzes em um só lugar.</p>
               </div>
-              <a class="publish-btn" href="${escapeAttr(shareUrl(quiz))}" target="_blank" rel="noopener">Ver página</a>
+              <div class="quiz-library-actions">
+                <label class="quiz-search"><span>⌕</span><input type="search" placeholder="Buscar quiz..." value="${escapeAttr(state.homeQuizSearch)}" data-quiz-search></label>
+                <button class="publish-btn" type="button" data-action="add-quiz">＋ Novo quiz</button>
+              </div>
             </div>
 
-            <div class="metric-grid">
-              ${metricCard("Respostas", total)}
-              ${metricCard("Perguntas", quiz.questions.length)}
-              ${metricCard("Perfil principal", topResult ? profileLabel(quiz, topResult[0]) : "Sem dados")}
-              ${metricCard("Conclusão", completionRate)}
+            <div class="quiz-summary-grid">
+              <article><span class="summary-icon purple">▤</span><div><small>Quizzes</small><strong>${allQuizzes.length}</strong><p>Todos os quizzes</p></div></article>
+              <article><span class="summary-icon green">✓</span><div><small>Ativos</small><strong>${activeCount}</strong><p>Publicados e ativos</p></div></article>
+              <article><span class="summary-icon amber">Ⅱ</span><div><small>Pausados</small><strong>${pausedCount}</strong><p>Não estão ativos</p></div></article>
+              <article><span class="summary-icon blue">♙</span><div><small>Total de respostas</small><strong>${totalResponses.toLocaleString("pt-BR")}</strong><p>Respostas recebidas</p></div></article>
             </div>
 
-            <div class="admin-panel-grid">
-              <article class="admin-panel">
-                <h2>Últimas respostas</h2>
-                ${latestSubmissionsTable(quiz, submissions.slice(-6).reverse())}
-              </article>
-              <article class="admin-panel">
-                <h2>Distribuição de perfis</h2>
-                ${profileBars(quiz, submissions)}
-              </article>
+            <div class="quiz-filter-tabs">
+              ${[["all", "Todos"], ["active", "Ativos"], ["paused", "Pausados"], ["draft", "Rascunhos"], ["archived", "Arquivados"]].map(([value, label]) =>
+                `<button type="button" class="${state.homeQuizFilter === value ? "active" : ""}" data-action="filter-home-quizzes" data-filter="${value}">${label}</button>`
+              ).join("")}
             </div>
+
+            <div class="quiz-library-table">
+              <div class="quiz-table-head"><span>Quiz</span><span>Respostas</span><span>Perguntas</span><span>Taxa de conclusão</span><span>Status</span><span>Atualizado em</span><span></span></div>
+              ${visibleQuizzes.map((item, index) => {
+                const stats = quizStats(item);
+                const [statusLabel, statusColor] = statusMeta[item.status] || statusMeta.draft;
+                const updated = new Date(item.updatedAt);
+                return `
+                  <article class="quiz-library-row">
+                    <button class="quiz-main-cell" type="button" data-action="edit-library-quiz" data-id="${item.id}">
+                      <span class="quiz-row-icon color-${index % 4}">▣</span>
+                      <span><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.subtitle || "Quiz sem descrição")}</small></span>
+                    </button>
+                    <div><strong>${stats.responses.toLocaleString("pt-BR")}</strong><small>respostas</small></div>
+                    <div><strong>${item.questions.length}</strong><small>perguntas</small></div>
+                    <div class="quiz-completion"><strong>${stats.completion}%</strong><span><i style="width:${stats.completion}%"></i></span></div>
+                    <div><em class="quiz-status ${statusColor}">● ${statusLabel}</em></div>
+                    <div><strong>${Number.isNaN(updated.getTime()) ? "-" : updated.toLocaleDateString("pt-BR")}</strong><small>${Number.isNaN(updated.getTime()) ? "" : updated.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}</small></div>
+                    <details class="quiz-row-menu">
+                      <summary>⋮</summary>
+                      <div>
+                        <button data-action="edit-library-quiz" data-id="${item.id}">Abrir construtor</button>
+                        <button data-action="rename-library-quiz" data-id="${item.id}">Renomear</button>
+                        <button data-action="duplicate-quiz" data-id="${item.id}">Duplicar</button>
+                        <button data-action="set-quiz-status" data-id="${item.id}" data-status="${item.status === "active" ? "paused" : "active"}">${item.status === "active" ? "Pausar" : "Ativar"}</button>
+                        ${allQuizzes.length > 1 ? `<button class="danger" data-action="remove-quiz" data-id="${item.id}">Excluir</button>` : ""}
+                      </div>
+                    </details>
+                  </article>
+                `;
+              }).join("") || `<div class="quiz-library-empty"><strong>Nenhum quiz encontrado</strong><p>Ajuste a busca ou crie um novo quiz.</p><button class="publish-btn" data-action="add-quiz">＋ Novo quiz</button></div>`}
+            </div>
+            <p class="quiz-library-count">Mostrando ${visibleQuizzes.length} de ${allQuizzes.length} quiz${allQuizzes.length === 1 ? "" : "zes"}</p>
           </section>
         `;
       }
@@ -3170,6 +3548,8 @@
       }
 
       function quizExperience(quiz, preview) {
+        const activeKey = activeExperienceKey(quiz);
+        if (quiz.blankStages?.[activeKey]) return blankStageView(quiz, activeKey, preview);
         if (state.flowStage === "intro") return introView(quiz, preview);
         if (state.flowStage === "name") return nameView(quiz, preview);
         if (state.flowStage === "loading") return loadingView(quiz, preview);
@@ -3177,12 +3557,24 @@
         return questionView(quiz, Math.min(state.previewStep, quiz.questions.length - 1), preview);
       }
 
+      function blankStageView(quiz, key, preview) {
+        return `
+          <section class="quiz-page blank-stage-page" style="--theme:${escapeAttr(quiz.theme)}">
+            <div class="blank-stage-canvas">
+              ${[0, 1, 2, 3, 4].map((position) => stageComponentsView(quiz, key, preview, position)).join("")}
+              ${(quiz.stageComponents?.[key] || []).length || !preview ? "" : `<div class="blank-stage-placeholder"><span>＋</span><strong>Bloco vazio</strong><p>Adicione componentes para montar esta página.</p></div>`}
+            </div>
+          </section>
+        `;
+      }
+
       function introView(quiz, preview) {
+        const badge = String(quiz.badge ?? "").trim();
         return `
           <section class="quiz-page intro-page" style="--theme:${escapeAttr(quiz.theme)}">
             <div class="intro-center">
               ${stageComponentsView(quiz, "intro", preview, 0)}
-              <p class="app-kicker">${escapeHtml(quiz.badge || "Aplicativo inteligente")}</p>
+              ${badge ? `<p class="app-kicker" data-delay-target="intro-kicker" contenteditable="${preview ? "true" : "false"}" data-map-field="badge">${escapeHtml(badge)}</p>` : ""}
               <h2 data-delay-target="intro-title" contenteditable="${preview ? "true" : "false"}" data-map-field="title">${escapeHtml(quiz.title)}</h2>
               ${stageComponentsView(quiz, "intro", preview, 1)}
               <div class="intro-hero-frame" data-delay-target="intro-image">
@@ -3204,10 +3596,11 @@
       }
 
       function nameView(quiz, preview) {
+        const badge = String(quiz.badge ?? "").trim();
         return `
           <section class="quiz-page question-page name-page" style="--theme:${escapeAttr(quiz.theme)}">
             <div class="name-block">
-              <p class="app-kicker">${escapeHtml(quiz.badge || "Aplicativo inteligente")}</p>
+              ${badge ? `<p class="app-kicker" data-delay-target="name-kicker" contenteditable="${preview ? "true" : "false"}" data-map-field="badge">${escapeHtml(badge)}</p>` : ""}
               <h3>Qual o seu nome, viajante?</h3>
               <label class="traveler-name-field">
                 <span>Seu nome</span>
@@ -3267,9 +3660,10 @@
               <h3 data-delay-target="question-title" contenteditable="${preview ? "true" : "false"}" data-map-question="${step}">${escapeHtml(questionText)}</h3>
               ${stageComponentsView(quiz, `question:${step}`, preview, 1)}
               ${stageComponentsView(quiz, `question:${step}`, preview, 2)}
-              <div class="answer-stack" data-delay-target="question-options">
+              <div class="answer-stack option-layout-${escapeAttr(question.optionTemplate || "simple")}" data-delay-target="question-options">
                 ${question.options.map((option, index) => `
-                  <button class="answer-btn ${answeredIndex === index ? "selected" : ""}" data-action="${preview ? "preview-answer" : "answer"}" data-answer="${index}">
+                  <button class="answer-btn answer-option-${index} ${answeredIndex === index ? "selected" : ""}" data-action="${preview ? "preview-answer" : "answer"}" data-answer="${index}">
+                    ${option.icon ? `<i class="answer-option-icon">${escapeHtml(option.icon)}</i>` : ""}
                     <span contenteditable="${preview ? "true" : "false"}" data-map-option="${step}:${index}">${escapeHtml(option.text)}</span>
                     <b>→</b>
                   </button>
@@ -3356,13 +3750,78 @@
           element.addEventListener("click", (event) => {
             const action = element.dataset.action;
             if (action) event.preventDefault();
-            if (action === "add-quiz") addQuiz();
+            if (adminRoute() && element.closest(".canvas-preview, .funnel-page-preview") && action?.startsWith("preview-")) return;
+            if (action === "add-quiz") {
+              state.quizNameDialog = { mode: "create" };
+              state.quizNameDraft = "";
+              render();
+            }
+            if (action === "rename-library-quiz") {
+              const targetQuiz = state.quizzes.find((item) => item.id === element.dataset.id);
+              if (targetQuiz) {
+                state.quizNameDialog = { mode: "rename", id: targetQuiz.id };
+                state.quizNameDraft = targetQuiz.title;
+                render();
+              }
+            }
+            if (action === "cancel-quiz-name") {
+              state.quizNameDialog = null;
+              state.quizNameDraft = "";
+              render();
+            }
+            if (action === "confirm-quiz-name") {
+              const name = state.quizNameDraft.trim();
+              if (!name) {
+                document.querySelector("[data-quiz-name-input]")?.focus();
+                return;
+              }
+              if (state.quizNameDialog?.mode === "rename") {
+                const targetQuiz = state.quizzes.find((item) => item.id === state.quizNameDialog.id);
+                if (targetQuiz) {
+                  state.activeId = targetQuiz.id;
+                  targetQuiz.title = name;
+                  targetQuiz.updatedAt = new Date().toISOString();
+                  saveQuizzes();
+                  state.adminTab = "home";
+                }
+                state.quizNameDialog = null;
+                state.quizNameDraft = "";
+                render();
+              } else {
+                state.quizNameDialog = null;
+                state.quizNameDraft = "";
+                addQuiz(name);
+              }
+            }
             if (action === "undo-editor") undoEditor();
             if (action === "redo-editor") redoEditor();
             if (action === "select-admin-tab") {
               state.adminTab = element.dataset.tab || "home";
               render();
               if (state.adminTab === "flow") refreshRemoteFunnel();
+            }
+            if (action === "filter-home-quizzes") {
+              state.homeQuizFilter = element.dataset.filter || "all";
+              render();
+            }
+            if (action === "edit-library-quiz") {
+              state.activeId = element.dataset.id;
+              state.adminTab = "builder";
+              state.builderView = "flow";
+              state.adminStage = 0;
+              state.selectedComponentId = null;
+              render();
+            }
+            if (action === "set-quiz-status") {
+              const targetQuiz = state.quizzes.find((item) => item.id === element.dataset.id);
+              if (targetQuiz) {
+                targetQuiz.status = element.dataset.status || "active";
+                targetQuiz.updatedAt = new Date().toISOString();
+                state.activeId = targetQuiz.id;
+                saveQuizzes();
+                state.adminTab = "home";
+                render();
+              }
             }
             if (action === "select-builder-view") {
               state.builderView = element.dataset.builderView || "flow";
@@ -3413,15 +3872,53 @@
               render();
             }
             if (action === "duplicate-quiz") duplicateQuiz(element.dataset.id);
-            if (action === "remove-quiz") removeQuiz(element.dataset.id);
+            if (action === "remove-quiz") {
+              state.pendingDeleteQuizId = element.dataset.id;
+              render();
+            }
+            if (action === "cancel-delete-quiz") {
+              state.pendingDeleteQuizId = null;
+              render();
+            }
+            if (action === "confirm-delete-quiz") {
+              const confirmation = document.querySelector("[data-delete-quiz-input]")?.value || "";
+              if (confirmation === "EXCLUIR") removeQuiz(state.pendingDeleteQuizId);
+            }
             if (action === "select-stage") {
               state.adminStage = Number(element.dataset.stage || 0);
               state.selectedComponentId = null;
               render();
             }
             if (action === "add-question") addQuestion();
+            if (action === "add-manual-stage") {
+              const targetQuiz = activeQuiz();
+              const totalStages = targetQuiz.questions.length + 4;
+              const nextStageIndex = Math.min(totalStages - 1, Number(targetQuiz.manualStageCount || 0));
+              const nextStageKey = stageKey(targetQuiz, nextStageIndex);
+              targetQuiz.blankStages ||= {};
+              targetQuiz.blankStages[nextStageKey] = true;
+              targetQuiz.stageComponents ||= {};
+              targetQuiz.stageComponents[nextStageKey] = [];
+              targetQuiz.hiddenElements ||= {};
+              targetQuiz.hiddenElements[nextStageKey] = [];
+              targetQuiz.manualStageCount = Math.min(totalStages, nextStageIndex + 1);
+              state.adminStage = nextStageIndex;
+              state.selectedComponentId = null;
+              saveQuizzes();
+              render();
+            }
             if (action === "remove-question") removeQuestion(Number(element.dataset.q));
             if (action === "request-delete-question") requestDeleteQuestion(Number(element.dataset.question));
+            if (action === "request-delete-stage") requestDeleteStage(element.dataset.stageKey, element.dataset.stageLabel);
+            if (action === "cancel-delete-stage") {
+              state.pendingDeleteStageKey = null;
+              state.pendingDeleteStageLabel = "";
+              render();
+            }
+            if (action === "confirm-delete-stage") {
+              const confirmation = document.querySelector("[data-delete-stage-input]")?.value || "";
+              if (confirmation === "EXCLUIR") removeStage(state.pendingDeleteStageKey);
+            }
             if (action === "cancel-delete-question") {
               state.pendingDeleteQuestionIndex = null;
               render();
@@ -3466,6 +3963,9 @@
                 }
               }
             }
+            if (action === "custom-button-go") {
+              if (applyFlowTarget(quiz, element.dataset.destination)) render();
+            }
             if (action === "clear-submissions") {
               const quizId = activeQuiz().id;
               state.submissions = state.submissions.filter((item) => item.quizId !== activeQuiz().id);
@@ -3500,6 +4000,11 @@
               render();
             }
             if (action === "choose-text-template") addTextTemplate(element.dataset.template);
+            if (action === "close-option-templates") {
+              state.optionTemplatePicker = false;
+              render();
+            }
+            if (action === "choose-option-template") addOptionTemplate(element.dataset.template);
             if (action === "save-quiz") {
               localStorage.setItem(STORAGE_KEY, JSON.stringify(state.quizzes));
               element.disabled = true;
@@ -3621,6 +4126,34 @@
           window.requestAnimationFrame(() => deleteConfirmInput.focus());
         }
 
+        const deleteStageInput = document.querySelector("[data-delete-stage-input]");
+        if (deleteStageInput) {
+          deleteStageInput.addEventListener("input", () => {
+            const button = document.querySelector("[data-action='confirm-delete-stage']");
+            if (button) button.disabled = deleteStageInput.value !== "EXCLUIR";
+          });
+          deleteStageInput.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" || deleteStageInput.value !== "EXCLUIR") return;
+            event.preventDefault();
+            removeStage(state.pendingDeleteStageKey);
+          });
+          window.requestAnimationFrame(() => deleteStageInput.focus());
+        }
+
+        const deleteQuizInput = document.querySelector("[data-delete-quiz-input]");
+        if (deleteQuizInput) {
+          deleteQuizInput.addEventListener("input", () => {
+            const button = document.querySelector("[data-action='confirm-delete-quiz']");
+            if (button) button.disabled = deleteQuizInput.value !== "EXCLUIR";
+          });
+          deleteQuizInput.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter" || deleteQuizInput.value !== "EXCLUIR") return;
+            event.preventDefault();
+            removeQuiz(state.pendingDeleteQuizId);
+          });
+          window.requestAnimationFrame(() => deleteQuizInput.focus());
+        }
+
         document.querySelectorAll("[data-field]").forEach((input) => {
           input.addEventListener("input", () => {
             const target = activeQuiz();
@@ -3639,6 +4172,32 @@
             render();
           });
         });
+
+        document.querySelector("[data-quiz-search]")?.addEventListener("input", (event) => {
+          state.homeQuizSearch = event.currentTarget.value;
+          render();
+          const search = document.querySelector("[data-quiz-search]");
+          if (search) {
+            search.focus();
+            search.setSelectionRange(search.value.length, search.value.length);
+          }
+        });
+
+        const quizNameInput = document.querySelector("[data-quiz-name-input]");
+        if (quizNameInput) {
+          quizNameInput.addEventListener("input", () => {
+            state.quizNameDraft = quizNameInput.value;
+          });
+          quizNameInput.addEventListener("keydown", (event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            document.querySelector("[data-action='confirm-quiz-name']")?.click();
+          });
+          window.requestAnimationFrame(() => {
+            quizNameInput.focus();
+            quizNameInput.select();
+          });
+        }
 
         document.querySelectorAll("[data-checkout-choice]").forEach((input) => {
           input.addEventListener("change", () => {
@@ -3959,42 +4518,25 @@
               return rect.left + rect.width / 2 > start.x + 20 && input.dataset.flowInput !== from;
             });
             compatibleInputs.forEach((input) => input.classList.add("connection-target-available"));
-            const compatibleCards = compatibleInputs.map((input) => input.closest(".funnel-node-wrap")).filter(Boolean);
-            compatibleCards.forEach((card) => card.querySelector(".funnel-node")?.classList.add("connection-card-available"));
-            let lockedInput = null;
-            let lastPoint = { ...start };
             const targetAt = (x, y) => {
               const direct = document.elementFromPoint(x, y)?.closest("[data-flow-input]");
               if (direct && compatibleInputs.includes(direct)) return direct;
               return compatibleInputs
                 .map((candidate) => {
-                  const card = candidate.closest(".funnel-node-wrap")?.querySelector(".funnel-node");
-                  const rect = card?.getBoundingClientRect();
-                  if (!rect) return { candidate, distance: Infinity };
-                  const dx = Math.max(rect.left - x, 0, x - rect.right);
-                  const dy = Math.max(rect.top - y, 0, y - rect.bottom);
-                  return { candidate, distance: Math.hypot(dx, dy) };
+                  const rect = candidate.getBoundingClientRect();
+                  const centerX = rect.left + rect.width / 2;
+                  const centerY = rect.top + rect.height / 2;
+                  return { candidate, distance: Math.hypot(centerX - x, centerY - y) };
                 })
-                .filter((item) => item.distance <= 160)
+                .filter((item) => item.distance <= 38)
                 .sort((a, b) => a.distance - b.distance)[0]?.candidate || null;
-            };
-            const showLockedTarget = (input) => {
-              compatibleCards.forEach((card) => card.querySelector(".funnel-node")?.classList.remove("connection-card-target"));
-              input?.closest(".funnel-node-wrap")?.querySelector(".funnel-node")?.classList.add("connection-card-target");
             };
             const move = (moveEvent) => {
               if (moveEvent.pointerId !== event.pointerId) return;
               moved = true;
               const x = moveEvent.clientX;
               const y = moveEvent.clientY;
-              lastPoint = { x, y };
-              lockedInput = targetAt(x, y);
-              showLockedTarget(lockedInput);
-              const lockedRect = lockedInput?.getBoundingClientRect();
-              const endX = lockedRect ? lockedRect.left + lockedRect.width / 2 : x;
-              const endY = lockedRect ? lockedRect.top + lockedRect.height / 2 : y;
-              const middle = (start.x + endX) / 2;
-              temporary.setAttribute("d", `M ${start.x} ${start.y} C ${middle} ${start.y}, ${middle} ${endY}, ${endX} ${endY}`);
+              temporary.setAttribute("d", `M ${start.x} ${start.y} L ${x} ${y}`);
             };
             const end = (upEvent) => {
               if (upEvent.pointerId !== event.pointerId) return;
@@ -4003,8 +4545,7 @@
               document.removeEventListener("pointercancel", cancel, true);
               overlay.remove();
               compatibleInputs.forEach((input) => input.classList.remove("connection-target-available"));
-              compatibleCards.forEach((card) => card.querySelector(".funnel-node")?.classList.remove("connection-card-target", "connection-card-available"));
-              const input = lockedInput || targetAt(upEvent.clientX, upEvent.clientY) || targetAt(lastPoint.x, lastPoint.y);
+              const input = targetAt(upEvent.clientX, upEvent.clientY);
               if (input) {
                 activeQuiz().flowConnections = (activeQuiz().flowConnections || []).filter((connection) => !(connection.from === from && (connection.option ?? null) === (option ?? null)));
                 activeQuiz().flowConnections.push({ from, to: input.dataset.flowInput, option });
@@ -4022,7 +4563,6 @@
               document.removeEventListener("pointercancel", cancel, true);
               overlay.remove();
               compatibleInputs.forEach((input) => input.classList.remove("connection-target-available"));
-              compatibleCards.forEach((card) => card.querySelector(".funnel-node")?.classList.remove("connection-card-target", "connection-card-available"));
             };
             document.addEventListener("pointermove", move, true);
             document.addEventListener("pointerup", end, true);
