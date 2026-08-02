@@ -54,7 +54,7 @@
       const SUBMISSIONS_KEY = "quizlab_submissions_v1";
       const FUNNEL_KEY = "quizlab_funnel_v1";
       const AUTH_SESSION_KEY = "quizlab_auth_session_v1";
-      const APP_BUILD_VERSION = "20260802-8";
+      const APP_BUILD_VERSION = "20260802-9";
       const PUBLIC_SITE_ORIGIN = "https://incricao.vercel.app";
       const SUPABASE_URL = "https://iofaapgqxixcvgxizjyu.supabase.co";
       const SUPABASE_KEY = "sb_publishable_3PLbdXuIHwBmQDA0gMbqdw_ZfBTT1a1";
@@ -2287,12 +2287,14 @@
 
       function stageOutputPorts(quiz, stage) {
         const from = stageKey(quiz, stage);
-        if (from === "result") return "";
         if (from.startsWith("question:")) {
           const questionIndex = Number(from.split(":")[1]);
-          return quiz.questions[questionIndex].options.map((option, index) => `
-            <button class="flow-port flow-output-port ${flowConnectionFor(quiz, from, index) ? "connected" : ""}" data-flow-output="${escapeAttr(from)}" data-flow-option="${index}" title="Resposta ${index + 1}: ${escapeAttr(option.text)}"><span>${index + 1}</span></button>
-          `).join("");
+          const options = quiz.questions[questionIndex]?.options || [];
+          if (options.length) {
+            return options.map((option, index) => `
+              <button class="flow-port flow-output-port ${flowConnectionFor(quiz, from, index) ? "connected" : ""}" data-flow-output="${escapeAttr(from)}" data-flow-option="${index}" title="Resposta ${index + 1}: ${escapeAttr(option.text)}"><span>${index + 1}</span></button>
+            `).join("");
+          }
         }
         return `<button class="flow-port flow-output-port ${flowConnectionFor(quiz, from, null) ? "connected" : ""}" data-flow-output="${escapeAttr(from)}" data-flow-option="" title="Puxar conexão"></button>`;
       }
@@ -3090,7 +3092,7 @@
           .sort((a, b) => mobileMode ? Number(a.mobileOrder ?? allComponents.indexOf(a)) - Number(b.mobileOrder ?? allComponents.indexOf(b)) : allComponents.indexOf(a) - allComponents.indexOf(b));
         if (!components.length && !preview) return "";
         const dropData = preview ? ` data-component-position="${position}"` : "";
-        return `<div class="custom-components ${components.length ? "" : "empty-component-position"}"${dropData}>${components.map((component) => componentView(component, preview)).join("")}</div>`;
+        return `<div class="custom-components ${components.length ? "" : "empty-component-position"}"${dropData}>${components.map((component) => componentView(component, preview, key, quiz)).join("")}</div>`;
       }
 
       function priceEditable(component, key, preview, className = "", fallback = "") {
@@ -3174,7 +3176,7 @@
         `;
       }
 
-      function componentView(component, preview) {
+      function componentView(component, preview, componentStageKey = "", componentQuiz = activeQuiz()) {
         const selected = preview && state.selectedComponentId === component.id ? " selected-custom-component" : "";
         const selectAttr = preview ? ` data-action="select-custom-component" data-component-id="${component.id}"` : "";
         const dragAttr = preview ? ` draggable="true" data-custom-draggable="${component.id}"` : "";
@@ -3227,18 +3229,22 @@
             component.captureEmail !== false ? { key: "email", type: "email", label: component.emailLabel || "E-mail", required: component.requireEmail !== false, autocomplete: "email" } : null,
             component.captureWhatsapp !== false ? { key: "phone", type: "tel", label: component.whatsappLabel || "WhatsApp", required: component.requireWhatsapp === true, autocomplete: "tel" } : null
           ].filter(Boolean);
-          return `<div class="custom-component capture-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<form class="capture-form" data-capture-form="${component.id}"><h3>${escapeHtml(component.content || "Preencha seus dados")}</h3>${fields.map((field) => `<label><span>${escapeHtml(field.label)}${field.required ? " *" : ""}</span><input type="${field.type}" name="${field.key}" value="${escapeAttr(state.lead[field.key] || "")}" autocomplete="${field.autocomplete}" ${field.required ? "required" : ""} data-capture-field="${field.key}" placeholder="Digite ${escapeAttr(field.label.toLowerCase())}"></label>`).join("")}${fields.length ? `<button type="submit">${escapeHtml(component.submitLabel || "Continuar")}</button>` : `<p class="capture-empty">Selecione pelo menos um dado nas configurações.</p>`}</form></div>`;
+          return `<div class="custom-component capture-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<form class="capture-form" data-capture-form="${component.id}" data-flow-stage-key="${escapeAttr(componentStageKey)}"><h3>${escapeHtml(component.content || "Preencha seus dados")}</h3>${fields.map((field) => `<label><span>${escapeHtml(field.label)}${field.required ? " *" : ""}</span><input type="${field.type}" name="${field.key}" value="${escapeAttr(state.lead[field.key] || "")}" autocomplete="${field.autocomplete}" ${field.required ? "required" : ""} data-capture-field="${field.key}" placeholder="Digite ${escapeAttr(field.label.toLowerCase())}"></label>`).join("")}${fields.length ? `<button type="submit">${escapeHtml(component.submitLabel || "Continuar")}</button>` : `<p class="capture-empty">Selecione pelo menos um dado nas configurações.</p>`}</form></div>`;
         }
         if (component.type === "Opções") {
           const options = Array.isArray(component.options) ? component.options : [];
           const icons = Array.isArray(component.icons) ? component.icons : [];
           const layout = component.template || "simple";
-          return `<div class="custom-component options-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<div class="custom-options-list layout-${escapeAttr(layout)}">${options.map((option, index) => `<button type="button"><i>${escapeHtml(icons[index] || "○")}</i><span>${escapeHtml(option)}</span><b>→</b></button>`).join("")}</div></div>`;
+          const connectedTarget = flowConnectionFor(componentQuiz, componentStageKey, null)?.to || "";
+          const optionAction = !preview && connectedTarget ? ` data-action="custom-button-go" data-destination="${escapeAttr(connectedTarget)}"` : "";
+          return `<div class="custom-component options-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}<div class="custom-options-list layout-${escapeAttr(layout)}">${options.map((option, index) => `<button type="button"${optionAction}><i>${escapeHtml(icons[index] || "○")}</i><span>${escapeHtml(option)}</span><b>→</b></button>`).join("")}</div></div>`;
         }
         if (component.type === "Botão") {
+          const connectedTarget = flowConnectionFor(componentQuiz, componentStageKey, null)?.to || "";
           const destination = component.destination || "url";
-          const isInternal = destination !== "url";
-          const action = preview ? "" : isInternal ? ` data-action="custom-button-go" data-destination="${escapeAttr(destination)}"` : component.countsAsCheckout ? ` data-action="checkout-click"` : "";
+          const effectiveDestination = connectedTarget || destination;
+          const isInternal = Boolean(connectedTarget) || effectiveDestination !== "url";
+          const action = preview ? "" : isInternal ? ` data-action="custom-button-go" data-destination="${escapeAttr(effectiveDestination)}"` : component.countsAsCheckout ? ` data-action="checkout-click"` : "";
           const linkBehavior = !preview && !isInternal ? ` target="_blank" rel="noopener"` : "";
           const mobileMode = preview && state.previewDevice === "mobile";
           const current = (key, fallback) => mobileMode ? (component[`mobile${key.charAt(0).toUpperCase()}${key.slice(1)}`] ?? component[key] ?? fallback) : (component[key] ?? fallback);
@@ -4412,10 +4418,11 @@
               render();
             } else if (action === "preview-start" || action === "start-quiz") {
               setCurrentRunIgnored(quiz, false);
-              state.flowStage = "name";
               state.previewStep = 0;
               state.answers = [];
               state.submittedThisRun = false;
+              const introConnection = flowConnectionFor(quiz, "intro", null);
+              if (!applyFlowTarget(quiz, introConnection?.to)) state.flowStage = "name";
               render();
             }
             if (action === "preview-name-next" && !isPublicPage) {
@@ -5005,6 +5012,15 @@
             event.preventDefault();
             if (!captureForm.reportValidity()) return;
             syncCaptureFields();
+            const from = captureForm.dataset.flowStageKey || activeExperienceKey(quiz);
+            const connection = flowConnectionFor(quiz, from, null);
+            if (isPublicPage && connection?.to) {
+              const shouldRecord = !connection.to.startsWith("question:");
+              if (applyFlowTarget(quiz, connection.to, shouldRecord)) {
+                render();
+                return;
+              }
+            }
             captureForm.classList.add("saved");
             const button = captureForm.querySelector("button[type='submit']");
             if (!button) return;
