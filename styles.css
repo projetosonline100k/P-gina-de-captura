@@ -1427,7 +1427,7 @@ select:focus {
 .canvas-preview.device-mobile .intro-center > p:not(.app-kicker) { margin-bottom:26px;font-size:16px;line-height:1.45; }
 .canvas-preview.device-mobile .diagnostic-btn { min-width:0;width:100%;min-height:56px;padding:0 14px;border-radius:10px;font-size:14px;letter-spacing:.08em; }
 .canvas-preview.device-mobile .trust-row { align-items:center;flex-direction:column;gap:8px;margin-top:22px;font-size:12px; }
-.canvas-preview.device-mobile .question-page { padding-top:64px;padding-bottom:42px; }
+.canvas-preview.device-mobile .question-page { padding-top:82px;padding-bottom:42px; }
 .canvas-preview.device-mobile .segment-progress { gap:6px;margin-bottom:clamp(76px,12vh,118px); }
 .canvas-preview.device-mobile .question-block h3 { margin-bottom:36px;font-size:28px;line-height:1.18; }
 .canvas-preview.device-mobile .name-block h3 { margin-bottom:24px;font-size:30px; }
@@ -3902,6 +3902,43 @@ select:focus {
   background: var(--green);
 }
 
+.segment-progress.selectable-progress {
+  position: relative;
+  padding: 12px;
+  border: 1px dashed transparent;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.segment-progress.selectable-progress:hover,
+.segment-progress.selectable-progress:focus-visible {
+  border-color: #2d76df;
+  outline: none;
+  background: rgba(45, 118, 223, .05);
+}
+
+.segment-progress.selectable-progress::after {
+  content: "Clique para escolher o progresso";
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 50%;
+  padding: 5px 9px;
+  border-radius: 7px;
+  background: #172033;
+  color: #fff;
+  font: 700 11px/1.2 Inter, sans-serif;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%);
+  transition: opacity .15s ease;
+}
+
+.segment-progress.selectable-progress:hover::after,
+.segment-progress.selectable-progress:focus-visible::after {
+  opacity: 1;
+}
+
 .question-block {
   width: min(100%, 860px);
   margin: 0 auto;
@@ -4656,7 +4693,7 @@ select:focus {
   }
 
   .question-page {
-    padding-top: max(64px, calc(env(safe-area-inset-top) + 42px));
+    padding-top: max(82px, calc(env(safe-area-inset-top) + 58px));
     padding-bottom: 42px;
   }
 
@@ -5020,6 +5057,12 @@ select:focus {
   width: 100%;
 }
 
+.selected-option-editor {
+  border-color: #2d76df !important;
+  box-shadow: 0 0 0 3px rgba(45, 118, 223, .12);
+  background: #f7faff;
+}
+
 .field-help {
   color: #7b8797;
   font-size: 12px;
@@ -5048,6 +5091,20 @@ select:focus {
 .progress-component-editor {
   display: grid;
   gap: 12px;
+}
+
+.manual-progress-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #dce4ed;
+  border-radius: 10px;
+  background: #f8faff;
+}
+
+.manual-progress-label {
+  grid-column: 1 / -1;
 }
 
 .custom-progress {
@@ -5170,6 +5227,15 @@ select:focus {
   margin-bottom: clamp(72px, 12vh, 128px);
 }
 
+.blank-stage-page .progress-component {
+  margin-top: 220px;
+  margin-bottom: clamp(72px, 12vh, 128px);
+}
+
+.canvas-preview.device-mobile .blank-stage-page .progress-component {
+  margin-top: 82px;
+}
+
 @media (max-width: 680px) {
   .capture-form,
   .canvas-preview.device-mobile .capture-form {
@@ -5192,6 +5258,11 @@ select:focus {
   }
 
   .question-page .progress-component {
+    margin-bottom: clamp(76px, 13vh, 120px);
+  }
+
+  .blank-stage-page .progress-component {
+    margin-top: 82px;
     margin-bottom: clamp(76px, 13vh, 120px);
   }
 }

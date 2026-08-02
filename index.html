@@ -54,7 +54,7 @@
       const SUBMISSIONS_KEY = "quizlab_submissions_v1";
       const FUNNEL_KEY = "quizlab_funnel_v1";
       const AUTH_SESSION_KEY = "quizlab_auth_session_v1";
-      const APP_BUILD_VERSION = "20260802-11";
+      const APP_BUILD_VERSION = "20260802-16";
       const PUBLIC_SITE_ORIGIN = "https://incricao.vercel.app";
       const SUPABASE_URL = "https://iofaapgqxixcvgxizjyu.supabase.co";
       const SUPABASE_KEY = "sb_publishable_3PLbdXuIHwBmQDA0gMbqdw_ZfBTT1a1";
@@ -154,6 +154,7 @@
         quizNameDraft: "",
         adminResultIndex: 0,
         selectedComponentId: null,
+        selectedQuestionOptionIndex: null,
         flowStage: "intro",
         previewStep: 0,
         loadingProgress: 0,
@@ -985,7 +986,7 @@
         const key = stageKey(quiz);
         const template = progressTemplates[templateId] || progressTemplates.minimal;
         quiz.stageComponents ||= {};
-        const component = { id: uid("component"), type: "Progresso", position: 0, color: quiz.theme || "#6438e8", ...clone(template) };
+        const component = { id: uid("component"), type: "Progresso", position: 0, color: quiz.theme || "#6438e8", progressMode: "automatic", manualCurrent: 1, manualTotal: 4, manualLabel: "Etapa atual", ...clone(template) };
         delete component.name;
         (quiz.stageComponents[key] ||= []).push(component);
         state.selectedComponentId = component.id;
@@ -1302,7 +1303,36 @@
         `;
       }
 
+      function flushPendingComponentEdits() {
+        const quiz = activeQuiz();
+        const components = quiz.stageComponents?.[stageKey(quiz)] || [];
+        document.querySelectorAll("[data-stage-component]").forEach((input) => {
+          const component = components.find((item) => item.id === input.dataset.stageComponent);
+          if (!component) return;
+          component[input.dataset.componentKey] = input.hasAttribute("data-component-boolean") ? input.checked : input.value;
+        });
+        document.querySelectorAll("[data-option-component]").forEach((input) => {
+          const component = components.find((item) => item.id === input.dataset.optionComponent);
+          if (!component || component.type !== "Opções") return;
+          const index = Number(input.dataset.optionIndex);
+          component.options ||= [];
+          component.icons ||= [];
+          if (input.dataset.optionKey === "icon") component.icons[index] = input.value;
+          else component.options[index] = input.value;
+        });
+        document.querySelectorAll("[data-map-option]").forEach((element) => {
+          const [questionIndex, optionIndex] = element.dataset.mapOption.split(":").map(Number);
+          const option = quiz.questions?.[questionIndex]?.options?.[optionIndex];
+          if (option) option.text = element.textContent.trim();
+        });
+        document.querySelectorAll("[data-map-question]").forEach((element) => {
+          const question = quiz.questions?.[Number(element.dataset.mapQuestion)];
+          if (question) question.text = element.textContent.trim();
+        });
+      }
+
       function moveStageComponent(id, direction) {
+        flushPendingComponentEdits();
         const quiz = activeQuiz();
         const components = quiz.stageComponents?.[stageKey(quiz)] || [];
         const from = components.findIndex((item) => item.id === id);
@@ -1316,6 +1346,7 @@
 
       function reorderStageComponent(draggedId, targetId) {
         if (!draggedId || !targetId || draggedId === targetId) return;
+        flushPendingComponentEdits();
         const quiz = activeQuiz();
         const components = quiz.stageComponents?.[stageKey(quiz)] || [];
         const from = components.findIndex((item) => item.id === draggedId);
@@ -2085,6 +2116,11 @@
           element.addEventListener("click", (event) => {
             const action = element.dataset.action;
             if (action) event.preventDefault();
+            if (action) event.stopPropagation();
+            if (action === "preview-answer") {
+              selectQuestionOption(Math.max(0, state.adminStage - 2), Number(element.dataset.answer));
+              return;
+            }
             if (action?.startsWith("preview-")) return;
             if (action === "select-custom-component") {
               const clickedEditableText = event.target.closest(".custom-text-content");
@@ -2760,6 +2796,15 @@
       function progressComponentEditor(component) {
         return `<div class="progress-component-editor">
           <label class="field"><span>Modelo</span><select data-stage-component="${component.id}" data-component-key="template">${Object.values(progressTemplates).map((template) => `<option value="${template.template}" ${component.template === template.template ? "selected" : ""}>${escapeHtml(template.name)}</option>`).join("")}</select></label>
+          <label class="field"><span>Como calcular</span><select data-stage-component="${component.id}" data-component-key="progressMode">
+            <option value="automatic" ${component.progressMode !== "manual" ? "selected" : ""}>Automático pelo fluxo</option>
+            <option value="manual" ${component.progressMode === "manual" ? "selected" : ""}>Definir manualmente</option>
+          </select></label>
+          ${component.progressMode === "manual" ? `<div class="manual-progress-fields">
+            <label class="field"><span>Etapa atual</span><input type="number" min="1" max="50" value="${escapeAttr(component.manualCurrent || 1)}" data-stage-component="${component.id}" data-component-key="manualCurrent"></label>
+            <label class="field"><span>Total de etapas</span><input type="number" min="1" max="50" value="${escapeAttr(component.manualTotal || 4)}" data-stage-component="${component.id}" data-component-key="manualTotal"></label>
+            <label class="field manual-progress-label"><span>Nome da etapa</span><input value="${escapeAttr(component.manualLabel || "Etapa atual")}" data-stage-component="${component.id}" data-component-key="manualLabel"></label>
+          </div>` : `<p class="settings-note">O valor acompanha automaticamente a posição deste bloco no fluxo.</p>`}
           <label class="field"><span>Cor do progresso</span><input type="color" value="${escapeAttr(component.color || activeQuiz().theme || "#6438e8")}" data-stage-component="${component.id}" data-component-key="color"></label>
           ${captureToggle(component, "showPercent", "Mostrar percentual", "Exibe quanto do quiz já foi concluído")}
           ${captureToggle(component, "showCount", "Mostrar contagem", "Exibe a etapa atual e o total")}
@@ -2921,7 +2966,7 @@
             saveQuizzes();
             refreshAdminCanvas();
           });
-          if (input.dataset.componentKey === "destination") {
+          if (["destination", "progressMode"].includes(input.dataset.componentKey)) {
             input.addEventListener("change", () => render());
           }
         });
@@ -3007,12 +3052,26 @@
         const component = stageComponentById(id);
         if (!component) return;
         state.selectedComponentId = id;
+        state.selectedQuestionOptionIndex = null;
         document.querySelectorAll(".selected-custom-component").forEach((element) => element.classList.remove("selected-custom-component"));
         document.querySelector(`[data-component-id="${CSS.escape(id)}"]`)?.classList.add("selected-custom-component");
         const panel = document.querySelector(".settings-panel");
         if (!panel) return;
         panel.innerHTML = selectedComponentSettingsMarkup(activeQuiz(), state.adminStage);
         bindSelectedComponentSettings(panel);
+      }
+
+      function selectQuestionOption(questionIndex, optionIndex) {
+        flushPendingComponentEdits();
+        state.selectedComponentId = null;
+        state.selectedQuestionOptionIndex = optionIndex;
+        state.adminStage = questionIndex + 2;
+        render();
+        window.requestAnimationFrame(() => {
+          const card = document.querySelector(`[data-option-card="${questionIndex}:${optionIndex}"]`);
+          card?.scrollIntoView({ block: "center", behavior: "smooth" });
+          card?.querySelector("[data-okey='text']")?.focus({ preventScroll: true });
+        });
       }
 
       function locateStageElement(targetId, keepHighlight = false) {
@@ -3208,6 +3267,18 @@
         return `<div class="custom-progress progress-bar-style progress-${escapeAttr(component.template || "minimal")}" style="${style}">${centered}<div><span></span>${marker}</div><footer>${meta}</footer></div>`;
       }
 
+      function resolvedProgressInfo(component, automaticInfo) {
+        if (component.progressMode !== "manual") return automaticInfo;
+        const total = Math.max(1, Math.min(50, Number(component.manualTotal) || 1));
+        const current = Math.max(1, Math.min(total, Number(component.manualCurrent) || 1));
+        return {
+          current,
+          total,
+          percent: Math.round((current / total) * 100),
+          label: String(component.manualLabel || "Etapa atual")
+        };
+      }
+
       function priceCardMarkup(component, preview, compact = false) {
         const template = component.template || "simple";
         const editable = (key, className = "", fallback = "") => priceEditable(component, key, preview, className, fallback);
@@ -3276,7 +3347,8 @@
           </div>` : "";
         const targetAttr = ` data-delay-target="component:${component.id}"`;
         if (component.type === "Progresso") {
-          return `<div class="custom-component progress-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${progressComponentMarkup(component, progressInfoFor(componentQuiz, componentStageKey))}</div>`;
+          const progressInfo = resolvedProgressInfo(component, progressInfoFor(componentQuiz, componentStageKey));
+          return `<div class="custom-component progress-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${progressComponentMarkup(component, progressInfo)}</div>`;
         }
         if (component.type === "Timer") {
           if (!preview) return "";
@@ -3889,7 +3961,7 @@
             </select></label>
             <div class="option-list">
               ${question.options.map((option, oIndex) => `
-                <div class="option-editor option-style-card">
+                <div class="option-editor option-style-card ${state.selectedQuestionOptionIndex === oIndex ? "selected-option-editor" : ""}" data-option-card="${qIndex}:${oIndex}">
                   <div class="option-editor-head"><strong>Opção ${oIndex + 1}</strong><button type="button" class="mini-btn" data-action="remove-option" data-q="${qIndex}" data-o="${oIndex}">×</button></div>
                   <label class="field"><span>Texto</span><input value="${escapeAttr(option.text)}" data-option="${qIndex}:${oIndex}" data-okey="text"></label>
                   <div class="field-row option-emoji-row">
@@ -4111,7 +4183,7 @@
         const hasCustomProgress = (quiz.stageComponents?.[`question:${step}`] || []).some((component) => component.type === "Progresso");
         return `
           <section class="quiz-page question-page" style="--theme:${escapeAttr(quiz.theme)}">
-            ${hasCustomProgress ? "" : progressSegments(quiz.questions.length, step)}
+            ${hasCustomProgress ? "" : progressSegments(quiz.questions.length, step, preview)}
             <div class="question-block">
               ${stageComponentsView(quiz, `question:${step}`, preview, 0)}
               <h3 data-delay-target="question-title" contenteditable="${preview ? "true" : "false"}" data-map-question="${step}">${escapeHtml(questionText)}</h3>
@@ -4144,9 +4216,9 @@
         return value.charAt(0).toLocaleLowerCase("pt-BR") + value.slice(1);
       }
 
-      function progressSegments(total, current) {
+      function progressSegments(total, current, editable = false) {
         return `
-          <div class="segment-progress" aria-label="Progresso">
+          <div class="segment-progress ${editable ? "selectable-progress" : ""}" aria-label="Progresso" ${editable ? `role="button" tabindex="0" data-action="open-progress-templates" title="Selecionar modelo de progresso"` : ""}>
             ${Array.from({ length: total }).map((_, index) => `<span class="${index <= current ? "filled" : ""}"></span>`).join("")}
           </div>
         `;
@@ -4483,6 +4555,10 @@
               render();
             }
             if (action === "choose-progress-template") addProgressTemplate(element.dataset.template);
+            if (action === "open-progress-templates") {
+              state.progressTemplatePicker = true;
+              render();
+            }
             if (action === "save-quiz") {
               localStorage.setItem(accountStorageKey(STORAGE_KEY), JSON.stringify(state.quizzes));
               element.disabled = true;
@@ -4726,7 +4802,10 @@
             saveQuizzes();
           });
           element.addEventListener("click", (event) => {
-            if (element.isContentEditable) event.stopPropagation();
+            event.preventDefault();
+            event.stopPropagation();
+            const [questionIndex, optionIndex] = element.dataset.mapOption.split(":").map(Number);
+            selectQuestionOption(questionIndex, optionIndex);
           });
         });
 
@@ -4811,6 +4890,9 @@
             saveQuizzes();
             refreshAdminCanvas();
           });
+          if (input.dataset.componentKey === "progressMode") {
+            input.addEventListener("change", () => render());
+          }
         });
 
         document.querySelectorAll("[data-option-component]").forEach((input) => {
