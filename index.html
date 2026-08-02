@@ -54,7 +54,7 @@
       const SUBMISSIONS_KEY = "quizlab_submissions_v1";
       const FUNNEL_KEY = "quizlab_funnel_v1";
       const AUTH_SESSION_KEY = "quizlab_auth_session_v1";
-      const APP_BUILD_VERSION = "20260802-9";
+      const APP_BUILD_VERSION = "20260802-11";
       const PUBLIC_SITE_ORIGIN = "https://incricao.vercel.app";
       const SUPABASE_URL = "https://iofaapgqxixcvgxizjyu.supabase.co";
       const SUPABASE_KEY = "sb_publishable_3PLbdXuIHwBmQDA0gMbqdw_ZfBTT1a1";
@@ -170,6 +170,7 @@
         textTemplatePicker: false,
         optionTemplatePicker: false,
         optionTemplateFilter: "Todos",
+        progressTemplatePicker: false,
         authSession: loadAuthSession(),
         authLoading: false,
         authError: "",
@@ -962,7 +963,52 @@
           render();
           return;
         }
+        if (type === "Progresso") {
+          state.progressTemplatePicker = true;
+          render();
+          return;
+        }
         addStageComponent(type);
+      }
+
+      const progressTemplates = {
+        minimal: { name: "Minimalista", template: "minimal", showPercent: true, showCount: true },
+        marker: { name: "Barra com marcador", template: "marker", showPercent: true, showCount: true },
+        numbered: { name: "Etapas numeradas", template: "numbered", showPercent: false, showCount: false },
+        icons: { name: "Etapas com ícones", template: "icons", showPercent: false, showCount: false },
+        centered: { name: "Percentual no centro", template: "centered", showPercent: true, showCount: true },
+        segmented: { name: "Barras segmentadas", template: "segmented", showPercent: true, showCount: true }
+      };
+
+      function addProgressTemplate(templateId) {
+        const quiz = activeQuiz();
+        const key = stageKey(quiz);
+        const template = progressTemplates[templateId] || progressTemplates.minimal;
+        quiz.stageComponents ||= {};
+        const component = { id: uid("component"), type: "Progresso", position: 0, color: quiz.theme || "#6438e8", ...clone(template) };
+        delete component.name;
+        (quiz.stageComponents[key] ||= []).push(component);
+        state.selectedComponentId = component.id;
+        state.progressTemplatePicker = false;
+        saveQuizzes();
+        render();
+      }
+
+      function progressTemplatePreview(template) {
+        const component = { ...template, color: "#6438e8" };
+        return progressComponentMarkup(component, { current: 1, total: 5, percent: 20, label: "Pergunta 1" });
+      }
+
+      function progressTemplateModal() {
+        return `
+          <div class="price-template-backdrop">
+            <section class="price-template-modal progress-template-modal" role="dialog" aria-modal="true" aria-label="Templates de progresso">
+              <header><div><span>Componente</span><h2>Templates de Progresso</h2><p>Escolha como o usuário acompanhará o avanço no quiz.</p></div><button type="button" data-action="close-progress-templates" aria-label="Fechar">×</button></header>
+              <div class="progress-template-grid">
+                ${Object.entries(progressTemplates).map(([id, template]) => `<article class="price-template-option progress-template-option"><strong>${escapeHtml(template.name)}</strong><div class="progress-template-preview">${progressTemplatePreview(template)}</div><button type="button" data-action="choose-progress-template" data-template="${id}">Usar template</button></article>`).join("")}
+              </div>
+            </section>
+          </div>`;
       }
 
       function addOptionTemplate(templateId) {
@@ -1004,6 +1050,7 @@
         state.builderView = "page";
         state.selectedComponentId = null;
         state.optionTemplatePicker = false;
+        state.progressTemplatePicker = false;
         saveQuizzes();
         render();
       }
@@ -1382,6 +1429,7 @@
         state.priceTemplatePicker = false;
         state.textTemplatePicker = false;
         state.optionTemplatePicker = false;
+        state.progressTemplatePicker = false;
         saveQuizzes();
         render();
       }
@@ -2203,6 +2251,7 @@
           ["▧", "Imagem"],
           ["○", "Loading"],
           ["☑", "Opções"],
+          ["▰", "Progresso"],
           ["$", "Preço"],
           ["T", "Texto"],
           ["◷", "Timer"],
@@ -2416,6 +2465,7 @@
             ${state.priceTemplatePicker ? priceTemplateModal() : ""}
             ${state.textTemplatePicker ? textTemplateModal() : ""}
             ${state.optionTemplatePicker ? optionTemplateModal() : ""}
+            ${state.progressTemplatePicker ? progressTemplateModal() : ""}
             ${deleteQuestionModal()}
             ${deleteStageModal()}
             ${quizNameModal()}
@@ -2663,7 +2713,7 @@
                 <strong>${escapeHtml(selected.type)}</strong>
                 <button type="button" class="text-btn" data-action="remove-stage-component" data-component-id="${selected.id}">Remover</button>
               </div>
-              ${selected.type === "Preço" ? priceComponentEditor(selected) : selected.type === "Texto" ? textComponentEditor(selected) : selected.type === "Botão" ? buttonComponentEditor(quiz, selected) : selected.type === "Captura" ? captureComponentEditor(selected) : selected.type === "Opções" ? optionComponentEditor(selected) : selected.type === "Imagem" ? `
+              ${selected.type === "Preço" ? priceComponentEditor(selected) : selected.type === "Texto" ? textComponentEditor(selected) : selected.type === "Botão" ? buttonComponentEditor(quiz, selected) : selected.type === "Captura" ? captureComponentEditor(selected) : selected.type === "Opções" ? optionComponentEditor(selected) : selected.type === "Progresso" ? progressComponentEditor(selected) : selected.type === "Imagem" ? `
                 ${imageUploadControls(selected)}
                 <label class="field">
                   <span>Ou use uma URL da imagem</span>
@@ -2705,6 +2755,15 @@
             <button type="button" class="secondary-btn option-choice-add" data-action="add-component-option" data-component-id="${component.id}">+ Adicionar opção</button>
           </div>
         `;
+      }
+
+      function progressComponentEditor(component) {
+        return `<div class="progress-component-editor">
+          <label class="field"><span>Modelo</span><select data-stage-component="${component.id}" data-component-key="template">${Object.values(progressTemplates).map((template) => `<option value="${template.template}" ${component.template === template.template ? "selected" : ""}>${escapeHtml(template.name)}</option>`).join("")}</select></label>
+          <label class="field"><span>Cor do progresso</span><input type="color" value="${escapeAttr(component.color || activeQuiz().theme || "#6438e8")}" data-stage-component="${component.id}" data-component-key="color"></label>
+          ${captureToggle(component, "showPercent", "Mostrar percentual", "Exibe quanto do quiz já foi concluído")}
+          ${captureToggle(component, "showCount", "Mostrar contagem", "Exibe a etapa atual e o total")}
+        </div>`;
       }
 
       function updateComponentOption(componentId, index, key, value) {
@@ -3121,6 +3180,34 @@
         return Number.isFinite(number) ? number : Number.POSITIVE_INFINITY;
       }
 
+      function progressInfoFor(quiz, key) {
+        const stages = ["intro", "name", ...quiz.questions.map((_, index) => `question:${index}`), "loading", "result"]
+          .filter((stage) => !(quiz.removedStages || []).includes(stage));
+        const index = Math.max(0, stages.indexOf(key));
+        const labels = { intro: "Início", name: "Identificação", loading: "Preparando resultado", result: "Resultado" };
+        return {
+          current: index + 1,
+          total: Math.max(1, stages.length),
+          percent: Math.round(((index + 1) / Math.max(1, stages.length)) * 100),
+          label: labels[key] || (key.startsWith("question:") ? `Pergunta ${Number(key.split(":")[1]) + 1}` : "Etapa atual")
+        };
+      }
+
+      function progressComponentMarkup(component, info) {
+        const color = escapeAttr(component.color || "#6438e8");
+        const style = `--progress-color:${color};--progress-percent:${info.percent}%`;
+        const meta = `${component.showCount !== false ? `<span>${String(info.current).padStart(2, "0")} / ${String(info.total).padStart(2, "0")}</span>` : ""}${component.showPercent !== false ? `<b>${info.percent}%</b>` : ""}`;
+        if (component.template === "segmented") {
+          return `<div class="custom-progress progress-segmented" style="${style}"><div>${Array.from({ length: info.total }).map((_, index) => `<i class="${index < info.current ? "done" : ""}"></i>`).join("")}</div><footer>${meta}</footer></div>`;
+        }
+        if (["numbered", "icons"].includes(component.template)) {
+          return `<div class="custom-progress progress-steps progress-${escapeAttr(component.template)}" style="${style}"><div>${Array.from({ length: info.total }).map((_, index) => `<i class="${index < info.current ? "done" : ""}">${component.template === "icons" ? ["●", "▣", "✓", "⚑"][Math.min(3, Math.floor(index * 4 / info.total))] : index + 1}</i>`).join("")}</div><strong>${escapeHtml(info.label)}</strong></div>`;
+        }
+        const marker = component.template === "marker" ? `<i></i>` : "";
+        const centered = component.template === "centered" && component.showPercent !== false ? `<strong>${info.percent}%</strong>` : "";
+        return `<div class="custom-progress progress-bar-style progress-${escapeAttr(component.template || "minimal")}" style="${style}">${centered}<div><span></span>${marker}</div><footer>${meta}</footer></div>`;
+      }
+
       function priceCardMarkup(component, preview, compact = false) {
         const template = component.template || "simple";
         const editable = (key, className = "", fallback = "") => priceEditable(component, key, preview, className, fallback);
@@ -3188,6 +3275,9 @@
             <button type="button" class="delete-canvas-component" data-action="remove-stage-component" data-component-id="${component.id}" title="Excluir">×</button>
           </div>` : "";
         const targetAttr = ` data-delay-target="component:${component.id}"`;
+        if (component.type === "Progresso") {
+          return `<div class="custom-component progress-component${selected}"${selectAttr}${dragAttr}${targetAttr}>${toolbar}${progressComponentMarkup(component, progressInfoFor(componentQuiz, componentStageKey))}</div>`;
+        }
         if (component.type === "Timer") {
           if (!preview) return "";
           const seconds = Math.max(0, Number(component.content) || 0);
@@ -4018,9 +4108,10 @@
         const question = quiz.questions[step];
         const answeredIndex = state.answers[step];
         const questionText = personalizedQuestion(question.text, preview);
+        const hasCustomProgress = (quiz.stageComponents?.[`question:${step}`] || []).some((component) => component.type === "Progresso");
         return `
           <section class="quiz-page question-page" style="--theme:${escapeAttr(quiz.theme)}">
-            ${progressSegments(quiz.questions.length, step)}
+            ${hasCustomProgress ? "" : progressSegments(quiz.questions.length, step)}
             <div class="question-block">
               ${stageComponentsView(quiz, `question:${step}`, preview, 0)}
               <h3 data-delay-target="question-title" contenteditable="${preview ? "true" : "false"}" data-map-question="${step}">${escapeHtml(questionText)}</h3>
@@ -4387,6 +4478,11 @@
               render();
             }
             if (action === "choose-option-template") addOptionTemplate(element.dataset.template);
+            if (action === "close-progress-templates") {
+              state.progressTemplatePicker = false;
+              render();
+            }
+            if (action === "choose-progress-template") addProgressTemplate(element.dataset.template);
             if (action === "save-quiz") {
               localStorage.setItem(accountStorageKey(STORAGE_KEY), JSON.stringify(state.quizzes));
               element.disabled = true;
