@@ -4825,6 +4825,9 @@
             saveQuizzes();
           });
           element.addEventListener("click", (event) => {
+            // Na página pública o clique no texto precisa alcançar o botão
+            // inteiro da alternativa. O bloqueio é necessário só no editor.
+            if (isPublicPage) return;
             event.preventDefault();
             event.stopPropagation();
             const [questionIndex, optionIndex] = element.dataset.mapOption.split(":").map(Number);
