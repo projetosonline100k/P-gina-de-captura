@@ -4179,7 +4179,7 @@
       function questionView(quiz, step, preview) {
         const question = quiz.questions[step];
         const answeredIndex = state.answers[step];
-        const questionText = personalizedQuestion(question.text, preview);
+        const questionText = personalizedQuestion(question.text, preview, step);
         const hasCustomProgress = (quiz.stageComponents?.[`question:${step}`] || []).some((component) => component.type === "Progresso");
         return `
           <section class="quiz-page question-page" style="--theme:${escapeAttr(quiz.theme)}">
@@ -4205,9 +4205,11 @@
         `;
       }
 
-      function personalizedQuestion(text, preview) {
+      function personalizedQuestion(text, preview, step) {
         const firstName = String(state.lead.name || "").trim().split(/\s+/)[0];
-        if (preview || !firstName) return text;
+        // O nome funciona como uma saudação na primeira pergunta; repeti-lo em
+        // todas as etapas torna a leitura cansativa para quem responde o quiz.
+        if (preview || !firstName || step !== 0) return text;
         return `${firstName}, ${lowerFirst(text)}`;
       }
 
