@@ -4650,7 +4650,9 @@
               const from = `question:${answeredStep}`;
               const connection = flowConnectionFor(quiz, from, answerIndex) || flowConnectionFor(quiz, from, null);
               const shouldRecord = action === "answer" && !connection?.to?.startsWith("question:");
-              if (!applyFlowTarget(quiz, connection?.to, shouldRecord) && !(quiz.flowConnections || []).length) {
+              // Se uma opção não tiver uma conexão no construtor, mantenha o
+              // quiz utilizável avançando para a próxima pergunta normalmente.
+              if (!applyFlowTarget(quiz, connection?.to, shouldRecord)) {
                 if (answeredStep >= quiz.questions.length - 1) {
                   if (action === "answer") recordSubmission(quiz);
                   state.flowStage = "loading";
