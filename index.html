@@ -53,6 +53,7 @@
       const STORAGE_KEY = "quizlab_quizzes_v3";
       const SUBMISSIONS_KEY = "quizlab_submissions_v1";
       const FUNNEL_KEY = "quizlab_funnel_v1";
+      const PREVIEW_DRAFT_KEY = "quizlab_preview_draft_v1";
       const AUTH_SESSION_KEY = "quizlab_auth_session_v1";
       const APP_BUILD_VERSION = "20260802-16";
       const PUBLIC_SITE_ORIGIN = "https://incricao.vercel.app";
@@ -738,23 +739,33 @@
       }
 
       function previewUrl() {
-        const url = new URL(window.location.href);
-        url.search = "";
-        url.hash = "";
+        const quiz = activeQuiz();
+        const url = new URL("/", window.location.origin);
+        try {
+          localStorage.setItem(PREVIEW_DRAFT_KEY, JSON.stringify(quiz));
+        } catch (error) {
+          console.warn("Não foi possível salvar o rascunho da prévia:", error);
+        }
         url.searchParams.set("preview", "1");
-        url.searchParams.set("quiz", slugFor(activeQuiz()));
+        url.searchParams.set("quiz", slugFor(quiz));
         url.searchParams.set("v", APP_BUILD_VERSION);
         return url.toString();
       }
 
       function getPublicQuiz() {
         const params = new URLSearchParams(window.location.search);
+        const encoded = params.get("q");
         if (params.get("preview") === "1") {
           const previewSlug = params.get("quiz");
+          try {
+            const draft = JSON.parse(localStorage.getItem(PREVIEW_DRAFT_KEY) || "null");
+            if (draft && slugFor(draft) === previewSlug) return normalizeQuiz(draft);
+          } catch (error) {
+            console.warn("Não foi possível carregar o rascunho da prévia:", error);
+          }
           const previewQuiz = state.quizzes.find((quiz) => slugFor(quiz) === previewSlug) || activeQuiz();
           return normalizeQuiz(previewQuiz);
         }
-        const encoded = params.get("q");
         if (!encoded) {
           const slug = params.get("quiz");
           if (!slug) return null;
