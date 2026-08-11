@@ -4221,7 +4221,11 @@
         // O nome funciona como uma saudação na primeira pergunta; repeti-lo em
         // todas as etapas torna a leitura cansativa para quem responde o quiz.
         if (preview || !firstName || step !== 0) return text;
-        return `${firstName}, ${lowerFirst(text)}`;
+        const escapedName = firstName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const questionWithoutRepeatedName = String(text || "")
+          .trim()
+          .replace(new RegExp(`^(?:${escapedName}\\s*,\\s*)+`, "i"), "");
+        return `${firstName}, ${lowerFirst(questionWithoutRepeatedName)}`;
       }
 
       function lowerFirst(text) {
